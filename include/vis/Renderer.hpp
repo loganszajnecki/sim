@@ -46,7 +46,8 @@ private:
     GLuint vao_axes_ = 0, vbo_axes_ = 0, count_axes_ = 0;
 
     // input state
-    bool dragging_ = false;
+    bool orbiting_ = false;   // LMB drag
+    bool panning_  = false;   // MMB drag or Shift+LMB
     double lastx_ = 0.0, lasty_ = 0.0;
 };
 

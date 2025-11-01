@@ -35,6 +35,7 @@ namespace vis {
 Renderer::~Renderer() { shutdown(); }
 
 bool Renderer::init(const RendererConfig& cfg) {
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
         std::fprintf(stderr, "[Viewer] glfwInit failed\n");
@@ -95,31 +96,53 @@ bool Renderer::init(const RendererConfig& cfg) {
     glfwSetCursorPosCallback(window_, [](GLFWwindow* w, double x, double y){
         auto* self = static_cast<Renderer*>(glfwGetWindowUserPointer(w));
         if(!self) return;
-        if(self->dragging_){
-            float dx = float(x - self->lastx_);
-            float dy = float(y - self->lasty_);
-            self->cam_.orbit(-dx*0.005f, -dy*0.005f);
+        float dx = float(x - self->lastx_);
+        float dy = float(y - self->lasty_);
+
+        if (self->orbiting_) {
+            self->cam_.orbit(dx, dy);          // pixels
+        } else if (self->panning_) {
+            self->cam_.pan(dx, dy);            // pixels
         }
         self->lastx_ = x; self->lasty_ = y;
     });
-    glfwSetMouseButtonCallback(window_, [](GLFWwindow* w, int button, int action, int){
+
+    glfwSetMouseButtonCallback(window_, [](GLFWwindow* w, int button, int action, int mods){
         auto* self = static_cast<Renderer*>(glfwGetWindowUserPointer(w));
         if(!self) return;
-        if(button == GLFW_MOUSE_BUTTON_LEFT){
-            self->dragging_ = (action == GLFW_PRESS);
+
+        if (button == GLFW_MOUSE_BUTTON_LEFT) {
+            if (action == GLFW_PRESS) {
+                self->orbiting_ = !(mods & GLFW_MOD_SHIFT); // LMB: orbit
+                self->panning_  =  (mods & GLFW_MOD_SHIFT); // Shift+LMB: pan
+                // Reset deltas on press to avoid jump
+                double x,y; glfwGetCursorPos(w,&x,&y);
+                self->lastx_ = x; self->lasty_ = y;
+            } else if (action == GLFW_RELEASE) {
+                self->orbiting_ = false; self->panning_ = false;
+            }
+        }
+        if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+            if (action == GLFW_PRESS) {
+                self->panning_ = true;
+                double x,y; glfwGetCursorPos(w,&x,&y);
+                self->lastx_ = x; self->lasty_ = y;
+            } else if (action == GLFW_RELEASE) {
+                self->panning_ = false;
+            }
         }
     });
-    glfwSetScrollCallback(window_, [](GLFWwindow* w, double, double yoff){
+
+    glfwSetScrollCallback(window_, [](GLFWwindow* w, double , double yoff){
         auto* self = static_cast<Renderer*>(glfwGetWindowUserPointer(w));
         if(!self) return;
-        self->cam_.dolly(float(yoff)*0.1f);
+        self->cam_.dolly(float(yoff)); // positive yoff zooms in
     });
 
     // Print GPU/GL info
     std::fprintf(stderr, "[Viewer] GL Vendor  : %s\n", glGetString(GL_VENDOR));
     std::fprintf(stderr, "[Viewer] GL Renderer: %s\n", glGetString(GL_RENDERER));
     std::fprintf(stderr, "[Viewer] GL Version : %s\n", glGetString(GL_VERSION));
-
     return true;
 }
 
