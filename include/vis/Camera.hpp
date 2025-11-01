@@ -32,7 +32,7 @@ public:
                              / std::max(1, height_);
         glm::vec3 right = rightVector();
         glm::vec3 up    = worldUp_; // lock to world up for clean vertical pans
-        target_ += (-dx_pixels * world_per_px) * right
+        target_ += (dx_pixels * world_per_px) * right
                    + ( dy_pixels * world_per_px) * up;
     }
 
