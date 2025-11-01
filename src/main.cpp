@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
     bool viewer_enabled = true;
     vis::Renderer renderer;
     if (viewer_enabled) {
-        if (!renderer.init({1280, 720, true, "SAM Viewer (Live)"})) {
+        if (!renderer.init({1920, 1080, true, "SAM Viewer (Live)"})) {
             std::cerr << "Viewer init failed; running headless.\n";
             viewer_enabled = false;
         } else {
@@ -97,84 +97,102 @@ int main(int argc, char** argv) {
     out << "t,px,py,pz,vx,vy,vz,tx,ty,tz\n";
 
     State s = missile.state;
+    bool intercept_reported = false;
+    bool sim_done = false;
+    double t_intercept = -1.0;
 
     while (t < tf) {
-        // Handle window close
+        // Allow user to close the window at any time
         if (viewer_enabled && renderer.shouldClose()) break;
 
-        // wall-clock delta
-        double now = glfwGetTime();
+        // Wall-clock timing
+        double now     = glfwGetTime();
         double frameDt = now - lastWall;
-        lastWall = now;
-        simLag += frameDt;
+        lastWall       = now;
+        simLag        += frameDt;
 
-        // Step the sim in fixed increments (h) to catch up with real-time
-        int maxStepsPerFrame = 10; // safety to avoid spiral of death
-        int steps = 0;
-        while (simLag >= h && steps < maxStepsPerFrame && t < tf) {
+        int   maxStepsPerFrame = 10; // safety cap
+        int   steps            = 0;
 
-            // 1) Update target kinematics to time t
-            double dt_target = h;               // we advance exactly h each substep
-            target.x[0] += target.x[3] * dt_target;
-            target.x[1] += target.x[4] * dt_target;
-            target.x[2] += target.x[5] * dt_target;
-            t_target = t + h;
+        if (!sim_done) {
+            // Step the sim in fixed increments (h) to catch up with real-time
+            while (simLag >= h && steps < maxStepsPerFrame && t < tf) {
+                // 1) Update target kinematics to time t+h
+                const double dt_target = h;
+                target.x[0] += target.x[3] * dt_target;
+                target.x[1] += target.x[4] * dt_target;
+                target.x[2] += target.x[5] * dt_target;
+                t_target = t + h;
 
-            // 2) Guidance
-            auto guidanceCmd = missile.guidance->guidanceCommand(s, target);
+                // 2) Guidance
+                auto guidanceCmd = missile.guidance->guidanceCommand(s, target);
 
-            // 3) Autopilot
-            auto control = missile.autopilot->control(s, guidanceCmd);
+                // 3) Autopilot
+                auto control = missile.autopilot->control(s, guidanceCmd);
 
-            // 4) Integrate dynamics (RK4)
-            DerivFunc f = [&](double /*tt*/, const State& yy) {
-                return missile.derivative(t, yy, control);
-            };
-            State snew = RK4Integrator::step(f, t, s, h);
-            snew.t = t + h;
+                // 4) Integrate dynamics (RK4 @ fixed h)
+                DerivFunc f = [&](double /*tt*/, const State& yy) {
+                    return missile.derivative(t, yy, control);
+                };
+                State snew = RK4Integrator::step(f, t, s, h);
+                snew.t = t + h;
 
-            // ---- Push telemetry sample for viewer ----
-            vis::TelemetrySample ts{};
-            ts.t  = snew.t;
-            ts.mx = (float)snew.x[0]; ts.my = (float)snew.x[1]; ts.mz = (float)snew.x[2];
-            ts.mvx= (float)snew.x[3]; ts.mvy= (float)snew.x[4]; ts.mvz= (float)snew.x[5];
-            ts.tx = (float)target.x[0]; ts.ty = (float)target.x[1]; ts.tz = (float)target.x[2];
-            // if available:
-            // ts.ax = (float)guidanceCmd.ax; ts.ay = (float)guidanceCmd.ay; ts.az = (float)guidanceCmd.az;
-            bus.push(ts);
+                // ---- Push telemetry sample for viewer ----
+                {
+                    vis::TelemetrySample ts{};
+                    ts.t  = snew.t;
+                    ts.mx = (float)snew.x[0]; ts.my = (float)snew.x[1]; ts.mz = (float)snew.x[2];
+                    ts.mvx= (float)snew.x[3]; ts.mvy= (float)snew.x[4]; ts.mvz= (float)snew.x[5];
+                    ts.tx = (float)target.x[0]; ts.ty = (float)target.x[1]; ts.tz = (float)target.x[2];
+                    // ts.ax = (float)guidanceCmd.ax; ts.ay = (float)guidanceCmd.ay; ts.az = (float)guidanceCmd.az;
+                    bus.push(ts);
+                }
 
-            // CSV (unchanged)
-            out << snew.t << ","
-                << snew.x[0] << "," << snew.x[1] << "," << snew.x[2] << ","
-                << snew.x[3] << "," << snew.x[4] << "," << snew.x[5] << ","
-                << target.x[0] << "," << target.x[1] << "," << target.x[2] << "\n";
+                // CSV (unchanged)
+                out << snew.t << ","
+                    << snew.x[0] << "," << snew.x[1] << "," << snew.x[2] << ","
+                    << snew.x[3] << "," << snew.x[4] << "," << snew.x[5] << ","
+                    << target.x[0] << "," << target.x[1] << "," << target.x[2] << "\n";
 
-            // commit substep
-            s = snew;
-            t += h;
-            simLag -= h;
-            ++steps;
+                // Commit substep
+                s = snew;
+                t += h;
+                simLag -= h;
+                ++steps;
 
-            // naive termination
-            double dx = s.x[0] - target.x[0];
-            double dy = s.x[1] - target.x[1];
-            double dz = s.x[2] - target.x[2];
-            if (dx*dx + dy*dy + dz*dz <= 1.0) {
-                std::cout << "Intercept (approx) at t=" << t << "\n";
-                simLag = 0.0;
-                break;
+                // Intercept test (latched, prints once)
+                const double dx = s.x[0] - target.x[0];
+                const double dy = s.x[1] - target.x[1];
+                const double dz = s.x[2] - target.x[2];
+                const double dist2 = dx*dx + dy*dy + dz*dz;
+
+                if (dist2 <= 5.0) { // your threshold
+                    if (!intercept_reported) {
+                        intercept_reported = true;
+                        t_intercept = t;
+                        std::cout << "Intercept (approx) at t = " << t_intercept << " s" << "\n";
+                        std::cout << "POCA = " << dist2 << " m" << "\n";
+                    }
+                    sim_done = true;
+                    // Stop doing more physics steps this frame
+                    simLag = 0.0;
+                    break; // break inner loop, physics is done
+                }
             }
+        } else {
+            // Physics is done; no more stepping. Keep rendering until user closes window.
+            simLag = 0.0;
         }
 
-        // Render one frame
+        // Render one frame (always render, even after intercept)
         if (viewer_enabled) {
             renderer.beginFrame();
             renderer.drawScene();   // consumes bus, draws trails + markers
             renderer.endFrame();
         }
 
-        // Optional tiny sleep to avoid 100% CPU if headless or sim is ahead
-        // std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // If running headless and physics is done, exit outer loop
+        if (sim_done && !viewer_enabled) break;
     }
 
     out.close();

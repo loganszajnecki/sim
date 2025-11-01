@@ -32,7 +32,7 @@ void main(){ FragColor = vec4(uColor,1.0); }
 
 namespace vis {
 
-Renderer::~Renderer() { shutdown(); }
+Renderer::~Renderer() = default;
 
 bool Renderer::init(const RendererConfig& cfg) {
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
@@ -195,11 +195,11 @@ void Renderer::drawScene() {
     //     dbg_t0 = now;
     // }
 
-    drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {1.0f, 0.85f, 0.2f});
-    drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_, {0.2f, 0.85f, 1.0f});
+    drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {0.0f, 1.0f, 0.0f});
+    drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_, {1.0f, 0.0f, 0.0f});
 
-    drawMarkerCross_(last_m_, 20.f, {1.0f, 0.85f, 0.2f});
-    drawMarkerCross_(last_t_, 60.f, {0.2f, 0.85f, 1.0f});
+    drawMarkerCross_(last_m_, 20.f, {0.0f, 1.0f, 0.0f});
+    drawMarkerCross_(last_t_, 60.f, {1.0f, 0.0f, 0.0f});
 }
 
 void Renderer::endFrame() {
@@ -213,24 +213,25 @@ bool Renderer::shouldClose() const {
 
 
 void Renderer::shutdown() {
-    // static
+    // delete GL objects while context is current
     if (vao_grid_) glDeleteVertexArrays(1, &vao_grid_);
     if (vbo_grid_) glDeleteBuffers(1, &vbo_grid_);
     if (vao_axes_) glDeleteVertexArrays(1, &vao_axes_);
     if (vbo_axes_) glDeleteBuffers(1, &vbo_axes_);
-    vao_grid_=vbo_grid_=vao_axes_=vbo_axes_=0;
-
-    // dynamic
     if (vao_trail_m_) glDeleteVertexArrays(1, &vao_trail_m_);
     if (vbo_trail_m_) glDeleteBuffers(1, &vbo_trail_m_);
     if (vao_trail_t_) glDeleteVertexArrays(1, &vao_trail_t_);
     if (vbo_trail_t_) glDeleteBuffers(1, &vbo_trail_t_);
+    vao_grid_=vbo_grid_=vao_axes_=vbo_axes_=0;
     vao_trail_m_=vbo_trail_m_=vao_trail_t_=vbo_trail_t_=0;
 
-    if(window_){ glfwDestroyWindow(window_); window_=nullptr; }
-    if(glfwInit()){ glfwTerminate(); }
+    if (window_) {
+        glfwDestroyWindow(window_);
+        window_ = nullptr;
+    }
+    // Terminate GLFW once
+    glfwTerminate();
 }
-
 // Z-up: grid on the XY plane (Z = 0), axes: X=red, Y=green, Z=blue
 void Renderer::initGridAxes_() {
     // --- Grid (2 km x 2 km, 10 m spacing) ---
