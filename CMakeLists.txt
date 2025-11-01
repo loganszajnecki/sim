@@ -39,9 +39,9 @@ target_link_libraries(sam_sim PRIVATE nlohmann_json::nlohmann_json)
 if(BUILD_VIEWER)
   message(STATUS "Viewer ENABLED")
 
-  # -----------------------------
-  # GLFW (fetch + build)
-  # -----------------------------
+  include(FetchContent)
+
+  # --- GLFW ---
   FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -52,51 +52,41 @@ if(BUILD_VIEWER)
   set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(glfw)
 
-  # -----------------------------
-  # glad (static lib)
-  # -----------------------------
+  # --- GLAD (vendored, generated from web tool) ---
   add_library(glad STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/glad/src/glad.c
+    ${CMAKE_SOURCE_DIR}/third_party/glad/src/glad.c
   )
   target_include_directories(glad PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/glad/include
+    ${CMAKE_SOURCE_DIR}/third_party/glad/include
   )
 
-  # -----------------------------
-  # GLM (fetch)
-  # -----------------------------
-  FetchContent_Declare(
-    glm
-    GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG        1.0.1
-  )
-  FetchContent_MakeAvailable(glm)
-
-  # -----------------------------
-  # Viewer sources (Phase 1)
-  # -----------------------------
-  add_executable(sam_viewer_smoke
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/vis/Renderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/vis/main_viewer_smoke.cpp
+  # --- Viewer core (Renderer + Camera + Shader) as a library ---
+  add_library(viewer_core STATIC
+    ${CMAKE_SOURCE_DIR}/src/vis/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/src/vis/Shader.cpp
     ${CMAKE_SOURCE_DIR}/src/vis/Camera.cpp
-    # (Optional) ${CMAKE_CURRENT_SOURCE_DIR}/src/vis/TelemetryBus.cpp
   )
-
-  target_include_directories(sam_viewer_smoke PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  target_include_directories(viewer_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
   )
 
   find_package(OpenGL REQUIRED)
-  target_link_libraries(sam_viewer_smoke PRIVATE
+
+  target_link_libraries(viewer_core PUBLIC
     glad
     glfw
     OpenGL::GL
-    glm
   )
   if(UNIX AND NOT APPLE)
-    target_link_libraries(sam_viewer_smoke PRIVATE dl pthread)
+    target_link_libraries(viewer_core PUBLIC dl pthread)
   endif()
-else()
-  message(STATUS "Viewer scaffolding DISABLED")
+
+  # --- Smoke app links viewer_core ---
+  add_executable(sam_viewer_smoke
+    ${CMAKE_SOURCE_DIR}/src/vis/main_viewer_smoke.cpp
+  )
+  target_link_libraries(sam_viewer_smoke PRIVATE viewer_core)
+
+  # --- IMPORTANT: link sam_sim with viewer_core too ---
+  target_link_libraries(sam_sim PRIVATE viewer_core)
 endif()
