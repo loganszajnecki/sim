@@ -1,26 +1,102 @@
-cmake_minimum_required(VERSION 3.15)
-project (sam_sim_skeleton LANGUAGES CXX)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+cmake_minimum_required(VERSION 3.20)
+project(sam_sim LANGUAGES C CXX)
+
+# 0. Essentials
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-cmake_policy(SET CMP0135 NEW)
-add_compile_options(-Wall -Wextra -Wpedantic -Wconversion)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# 1. Viewer switches
+option(BUILD_VIEWER "Build OpenGL viewer" ON)
+option(USE_FETCHCONTENT "Fetch third-party deps for viewer" ON)
+
+# 2. Core sources
+file(GLOB_RECURSE SIM_CORE_SRC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/sim/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/*.cpp"
+)
+
+# Exclude viewer sources from core (we’ll add them conditionally later)
+list(FILTER SIM_CORE_SRC EXCLUDE REGEX ".*/src/vis/.*")
+
+add_executable(sam_sim ${SIM_CORE_SRC})
+target_include_directories(sam_sim PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# 3. nlohmann_json via FetchContent (already in your project; ensure it’s here)
 include(FetchContent)
 FetchContent_Declare(
-    nlohmann_json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+  nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG        v3.11.3
 )
 FetchContent_MakeAvailable(nlohmann_json)
-
-include_directories(${PROJECT_SOURCE_DIR}/include)
-
-file(GLOB SRC
-    src/*.cpp
-    src/sim/*.cpp
-    src/modules/*.cpp
-)
-
-add_executable(sam_sim ${SRC})
 target_link_libraries(sam_sim PRIVATE nlohmann_json::nlohmann_json)
+
+# 4. Viewer (stub wiring only in Phase 0)
+if(BUILD_VIEWER)
+  message(STATUS "Viewer ENABLED")
+
+  # -----------------------------
+  # GLFW (fetch + build)
+  # -----------------------------
+  FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG        3.4
+  )
+  set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+  set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(glfw)
+
+  # -----------------------------
+  # glad (static lib)
+  # -----------------------------
+  add_library(glad STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/glad/src/glad.c
+  )
+  target_include_directories(glad PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/glad/include
+  )
+
+  # -----------------------------
+  # GLM (fetch)
+  # -----------------------------
+  FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        1.0.1
+  )
+  FetchContent_MakeAvailable(glm)
+
+  # -----------------------------
+  # Viewer sources (Phase 1)
+  # -----------------------------
+  add_executable(sam_viewer_smoke
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/vis/Renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/vis/main_viewer_smoke.cpp
+    ${CMAKE_SOURCE_DIR}/src/vis/Shader.cpp
+    ${CMAKE_SOURCE_DIR}/src/vis/Camera.cpp
+    # (Optional) ${CMAKE_CURRENT_SOURCE_DIR}/src/vis/TelemetryBus.cpp
+  )
+
+  target_include_directories(sam_viewer_smoke PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+
+  find_package(OpenGL REQUIRED)
+  target_link_libraries(sam_viewer_smoke PRIVATE
+    glad
+    glfw
+    OpenGL::GL
+    glm
+  )
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(sam_viewer_smoke PRIVATE dl pthread)
+  endif()
+else()
+  message(STATUS "Viewer scaffolding DISABLED")
+endif()
