@@ -8,6 +8,7 @@
 #include "sim/Integrator.hpp"
 #include "sim/Missile.hpp"
 #include "sim/JSONFactory.hpp"
+#include "vis/Telemetry.hpp" 
 
 auto demangle = [](const std::type_info& ti) {
     int status = 0;
@@ -63,6 +64,8 @@ int main(int argc, char** argv) {
 
     std::cout << "====================================\n\n";
 
+    vis::TelemetryBus bus;
+    bus.set_max(200000);
 
     // Initialize states
     missile.state = params.missile0;
@@ -102,7 +105,31 @@ int main(int argc, char** argv) {
         };
         State snew = RK4Integrator::step(f, t, s, h);
         snew.t = t + h;
+        // ---- Phase 3: push a telemetry sample (Z-up viewer expects x,y,z as-is) ----
+        {
+            vis::TelemetrySample ts{};
+            ts.t  = snew.t;
 
+            // missile kinematics
+            ts.mx  = static_cast<float>(snew.x[0]);
+            ts.my  = static_cast<float>(snew.x[1]);
+            ts.mz  = static_cast<float>(snew.x[2]);
+            ts.mvx = static_cast<float>(snew.x[3]);
+            ts.mvy = static_cast<float>(snew.x[4]);
+            ts.mvz = static_cast<float>(snew.x[5]);
+
+            // target kinematics
+            ts.tx = static_cast<float>(target.x[0]);
+            ts.ty = static_cast<float>(target.x[1]);
+            ts.tz = static_cast<float>(target.x[2]);
+
+            // commanded accel (optional)
+            // ts.ax = static_cast<float>(guidanceCmd.ax);
+            // ts.ay = static_cast<float>(guidanceCmd.ay);
+            // ts.az = static_cast<float>(guidanceCmd.az);
+
+            bus.push(ts);
+        }
         // write telemetry (missile + target)
         out << snew.t << ","
             << snew.x[0] << "," << snew.x[1] << "," << snew.x[2] << ","
