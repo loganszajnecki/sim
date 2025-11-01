@@ -21,7 +21,13 @@ class Renderer
 {
 public:
     Renderer() = default;
-    ~Renderer();
+    ~Renderer() { shutdown(); }
+
+    Renderer(const Renderer&) = delete;
+    Renderer& operator=(const Renderer&) = delete;
+    // allow move:
+    Renderer(Renderer&&) = default;
+    Renderer& operator=(Renderer&&) = default;
 
     bool init(const RendererConfig& cfg = {});
     bool beginFrame(); // polls events, clears framebuffer
@@ -30,9 +36,11 @@ public:
     void shutdown();
 
     bool shouldClose() const; // window close state
-
+    bool isInitialized() const { return initialized_; }
     void attachBus(TelemetryBus* bus) { bus_ = bus; }
 private:
+    bool initialized_ = false; 
+    
     void initGridAxes_();
     void initDynamicVBOs_();
     void drainBus_();

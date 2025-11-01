@@ -22,8 +22,6 @@ static GLuint compile_stage(GLenum type, const char* src) {
     return s;
 }
 
-Shader::~Shader() { if(prog_) glDeleteProgram(prog_); }
-
 bool Shader::compile(const char* vs_src, const char* fs_src) {
     GLuint vs = compile_stage(GL_VERTEX_SHADER, vs_src);
     if (!vs) return false;
@@ -55,6 +53,12 @@ bool Shader::compile(const char* vs_src, const char* fs_src) {
     return true;
 }
 
+void Shader::destroy() {
+    if (prog_) {
+        glDeleteProgram(prog_);
+        prog_ = 0;
+    }
+}
 
 void Shader::setMat4(const char* name, const glm::mat4& m) const {
     GLint loc = glGetUniformLocation(prog_, name);

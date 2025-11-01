@@ -3,7 +3,7 @@
     "tf": 60.0,
     "h": 0.01,
     "missile": {
-        "aero": { "type": "SimpleAero", "gain": 1.0, "damping": 0.0, "thrustAcc": 0.0 },
+        "aero": { "type": "SimpleAero", "gain": 1.0, "damping": 0.0, "thrustAcc": 10.0 },
         "guidance": { "type": "ProNav", "N": 3.5, "amax": 50.0 },
         "autopilot": { "type": "PD", "kp": 1.0, "kd": 0.0 }
     },

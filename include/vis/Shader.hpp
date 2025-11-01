@@ -9,11 +9,24 @@ class Shader
 {
 public:
     Shader() = default;
-    ~Shader();
+    ~Shader() = default;
+    
+    Shader(const Shader&) = delete;
+    Shader& operator=(const Shader&) = delete;
+    Shader(Shader&& other) noexcept { *this = std::move(other); }
+    Shader& operator=(Shader&& other) noexcept {
+        if (this != &other) {
+            prog_ = other.prog_;
+            other.prog_ = 0;
+        }
+        return *this;
+    }
 
     bool compile(const char* vs_src, const char* fs_src);
     void use() const { glUseProgram(prog_); }
     GLuint id() const { return prog_; }
+
+    void destroy();
 
     // uniform helpers
     void setMat4(const char* name, const glm::mat4& m) const;

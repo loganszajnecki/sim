@@ -32,8 +32,6 @@ void main(){ FragColor = vec4(uColor,1.0); }
 
 namespace vis {
 
-Renderer::~Renderer() = default;
-
 bool Renderer::init(const RendererConfig& cfg) {
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     glfwSetErrorCallback(glfw_error_callback);
@@ -145,7 +143,9 @@ bool Renderer::init(const RendererConfig& cfg) {
     std::fprintf(stderr, "[Viewer] GL Vendor  : %s\n", glGetString(GL_VENDOR));
     std::fprintf(stderr, "[Viewer] GL Renderer: %s\n", glGetString(GL_RENDERER));
     std::fprintf(stderr, "[Viewer] GL Version : %s\n", glGetString(GL_VERSION));
+    initialized_ = true; 
     return true;
+    
 }
 
 bool Renderer::beginFrame() {
@@ -212,26 +212,49 @@ bool Renderer::shouldClose() const {
 }
 
 
-void Renderer::shutdown() {
-    // delete GL objects while context is current
-    if (vao_grid_) glDeleteVertexArrays(1, &vao_grid_);
-    if (vbo_grid_) glDeleteBuffers(1, &vbo_grid_);
-    if (vao_axes_) glDeleteVertexArrays(1, &vao_axes_);
-    if (vbo_axes_) glDeleteBuffers(1, &vbo_axes_);
-    if (vao_trail_m_) glDeleteVertexArrays(1, &vao_trail_m_);
-    if (vbo_trail_m_) glDeleteBuffers(1, &vbo_trail_m_);
-    if (vao_trail_t_) glDeleteVertexArrays(1, &vao_trail_t_);
-    if (vbo_trail_t_) glDeleteBuffers(1, &vbo_trail_t_);
-    vao_grid_=vbo_grid_=vao_axes_=vbo_axes_=0;
-    vao_trail_m_=vbo_trail_m_=vao_trail_t_=vbo_trail_t_=0;
 
+void Renderer::shutdown() {
+    // Idempotent guard (require: set initialized_ = true at end of init())
+    if (!initialized_) return;
+    initialized_ = false;
+
+    // Stop consuming external data during teardown
+    bus_ = nullptr;
+
+    // Ensure THIS context is current before any glDelete* / shader destroy
+    if (window_) {
+        glfwMakeContextCurrent(window_);
+    }
+
+    // --- Delete GL resources while a context is alive ---
+    if (vao_grid_)  { glDeleteVertexArrays(1, &vao_grid_);  vao_grid_  = 0; }
+    if (vbo_grid_)  { glDeleteBuffers(1,       &vbo_grid_);  vbo_grid_  = 0; }
+    count_grid_ = 0;
+
+    if (vao_axes_)  { glDeleteVertexArrays(1, &vao_axes_);  vao_axes_  = 0; }
+    if (vbo_axes_)  { glDeleteBuffers(1,       &vbo_axes_);  vbo_axes_  = 0; }
+    count_axes_ = 0;
+
+    if (vao_trail_m_) { glDeleteVertexArrays(1, &vao_trail_m_); vao_trail_m_ = 0; }
+    if (vbo_trail_m_) { glDeleteBuffers(1,       &vbo_trail_m_); vbo_trail_m_ = 0; }
+
+    if (vao_trail_t_) { glDeleteVertexArrays(1, &vao_trail_t_); vao_trail_t_ = 0; }
+    if (vbo_trail_t_) { glDeleteBuffers(1,       &vbo_trail_t_); vbo_trail_t_ = 0; }
+
+    // Shader/program teardown must happen while context is current
+    solid_.destroy();  // no-op if not compiled; leaves program id = 0
+
+    // --- Destroy the window LAST (kills the context) ---
     if (window_) {
         glfwDestroyWindow(window_);
         window_ = nullptr;
     }
-    // Terminate GLFW once
-    glfwTerminate();
+
+    // NOTE: Do NOT call glfwTerminate() here unless Renderer also owns glfwInit().
+    // If you do manage init/terminate in this class, add a static refcount and
+    // only call glfwTerminate() when the last Renderer shuts down.
 }
+
 // Z-up: grid on the XY plane (Z = 0), axes: X=red, Y=green, Z=blue
 void Renderer::initGridAxes_() {
     // --- Grid (2 km x 2 km, 10 m spacing) ---
