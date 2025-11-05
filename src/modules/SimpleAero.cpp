@@ -2,8 +2,9 @@
 
 namespace modules {
 
-SimpleAero::SimpleAero(double accelGain, double velDamping, double thrustAccel)
-    : accelGain_(accelGain), velDamping_(velDamping), thrustAccel_(thrustAccel) {}
+SimpleAero::SimpleAero(double accelGain, double velDamping, double thrustAccel, double gravityAccel)
+    : accelGain_(accelGain), velDamping_(velDamping), thrustAccel_(thrustAccel),
+      gravityAccel_(gravityAccel) {}
 
 // actuators are interpreted as desired acc vector [ax, ay, az]
 sim::AeroForces SimpleAero::compute(const sim::State& state, 
@@ -18,11 +19,9 @@ sim::AeroForces SimpleAero::compute(const sim::State& state,
 
         // Translational forces (mass-normalized)
         out.force[0] = thrustAccel_ + accelGain_ * actuatorCmd[0] - velDamping_ * vx;
-
         out.force[1] =                accelGain_ * actuatorCmd[1] - velDamping_ * vy;
-
-        out.force[2] =                accelGain_ * actuatorCmd[2] - velDamping_ * vz;
-
+        out.force[2] =                accelGain_ * actuatorCmd[2] - velDamping_ * vz - gravityAccel_;
+        
         // Rotational moments: not modeled in 3-DoF
         out.moment = {0.0, 0.0, 0.0};
     }

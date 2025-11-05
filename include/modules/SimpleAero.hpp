@@ -41,7 +41,8 @@ class SimpleAero : public sim::IAerodynamics
 public:
     SimpleAero(double accelGain   = 1.0,
                double velDamping  = 0.0,
-               double thrustAccel = 0.0);
+               double thrustAccel = 0.0,
+               double gravityAccel = 9.81);
     
     /**
      * @brief Compute aerodynamic and propulsive forces.
@@ -56,6 +57,7 @@ private:
     double accelGain_;    // scales commanded acceleration
     double velDamping_;   // linear damping coefficient on velocity
     double thrustAccel_;  // constant forward (x-axis) thrust acceleration
+    double gravityAccel_;  // +Z is world up
 };
 
 } // namespace modules
