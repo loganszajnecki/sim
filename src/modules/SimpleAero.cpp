@@ -2,18 +2,31 @@
 
 namespace modules {
 
-SimpleAero::SimpleAero(double accGain, double damping, double thrustAcc) 
-    : gain_(accGain), damping_(damping), thrustAcc_(thrustAcc) {}
+SimpleAero::SimpleAero(double accelGain, double velDamping, double thrustAccel)
+    : accelGain_(accelGain), velDamping_(velDamping), thrustAccel_(thrustAccel) {}
 
 // actuators are interpreted as desired acc vector [ax, ay, az]
-sim::AeroForces SimpleAero::compute(const sim::State& s, const std::vector<double>& actuators)
+sim::AeroForces SimpleAero::compute(const sim::State& state, 
+                                    const std::vector<double>& actuatorCmd)
 {
-    sim::AeroForces out;
-    if (actuators.size() >= 3) {
-        out.force[0] = thrustAcc_ + gain_ * actuators[0] - damping_ * s.x[3];
-        out.force[1] =            + gain_ * actuators[1] - damping_ * s.x[4];
-        out.force[2] =            + gain_ * actuators[2] - damping_ * s.x[5];
+    sim::AeroForces out{}; // initializes both force and moment to zero
+
+    if (actuatorCmd.size() >= 3) {
+        const double vx = state.x[3];
+        const double vy = state.x[4];
+        const double vz = state.x[5];
+
+        // Translational forces (mass-normalized)
+        out.force[0] = thrustAccel_ + accelGain_ * actuatorCmd[0] - velDamping_ * vx;
+
+        out.force[1] =                accelGain_ * actuatorCmd[1] - velDamping_ * vy;
+
+        out.force[2] =                accelGain_ * actuatorCmd[2] - velDamping_ * vz;
+
+        // Rotational moments: not modeled in 3-DoF
+        out.moment = {0.0, 0.0, 0.0};
     }
+    
     return out;
 }
 

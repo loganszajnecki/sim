@@ -22,11 +22,14 @@ std::optional<InterceptResult> SimulationEngine::step(double h) {
     tgt_.x[2] += tgt_.x[5]*h;
 
     // 2) guidance + autopilot
-    auto gcmd = missile_.guidance->guidanceCommand(s_, tgt_);
-    auto ctrl = missile_.autopilot->control(s_, gcmd);
+    // guidanceCommand: desired acceleration (or similar) from guidance law
+    auto desiredAccel = missile_.guidance->computeGuidanceCommand(s_, tgt_);
+    auto actuatorCmd  = missile_.autopilot->computeActuatorCommand(s_, desiredAccel);
    
     // 3) dynamics (RK4 at fixed h)
-    DerivFunc f = [&](double /*tt*/, const State& yy) { return missile_.derivative(t_, yy, ctrl); };
+    DerivFunc f = [&](double /*tt*/, const State& yy) { 
+        return missile_.derivative(t_, yy, actuatorCmd); 
+    };
     State snew = RK4Integrator::step(f, t_, s_, h);
     snew.t = t_ + h;
 

@@ -18,7 +18,7 @@ inline double norm(const double a[3]) {
 namespace modules {
 
 // 3D vector PN: a_cmd = N * Vc * (los_hat x (v_rel x los_hat)) // |r|
-std::vector<double> ProNav::guidanceCommand(const sim::State& m,
+std::vector<double> ProNav::computeGuidanceCommand(const sim::State& m,
                                                      const sim::State& t) {
     double r[3]   = { t.x[0]-m.x[0], t.x[1]-m.x[1], t.x[2]-m.x[2] };
     double v_rel[3] = { t.x[3]-m.x[3], t.x[4]-m.x[4], t.x[5]-m.x[5] };

@@ -1,6 +1,6 @@
 #include "sim/JSONFactory.hpp"
 #include "modules/SimpleAero.hpp"
-#include "modules/PDAutopilot.hpp"
+#include "modules/SimpleAccelAutopilot.hpp"
 #include "modules/ProNav.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -74,10 +74,10 @@ bool load_from_json(const std::string &path, Missile &missile, FactoryParams &ou
         auto a = j["missile"]["aero"];
         std::string name = a.value("type", std::string("SimpleAero"));
         if (name == "SimpleAero") {
-            double gain = get_or(a, "gain", 1.0);
-            double damping = get_or(a, "damping", 0.0);
-            double thrust = get_or(a, "thrustAcc", 0.0);
-            missile.aero = std::make_unique<modules::SimpleAero>(gain, damping, thrust);
+            double accelGain = get_or(a, "accelGain", 1.0);
+            double velDamping = get_or(a, "velDamping", 0.0);
+            double thrustAccel = get_or(a, "thrustAccel", 0.0);
+            missile.aero = std::make_unique<modules::SimpleAero>(accelGain, velDamping, thrustAccel);
         } else {
             error = "Unknown aero type: " + name;
             return false;
@@ -103,11 +103,15 @@ bool load_from_json(const std::string &path, Missile &missile, FactoryParams &ou
     // Autopilot
     if (j.contains("missile") && j["missile"].contains("autopilot")) {
         auto ap = j["missile"]["autopilot"];
-        std::string name = ap.value("type", std::string("PD"));
-        if (name == "PD") {
-            double kp = get_or(ap, "kp", 1.0);
-            double kd = get_or(ap, "kd", 0.0);
-            missile.autopilot = std::make_unique<modules::PDAutopilot>(kp, kd);
+
+        // Default to simple placeholder autopilot
+        std::string name = ap.value("type", std::string("SimpleAccel"));
+
+        if (name == "SimpleAccel") {
+            double gain = get_or(ap, "gain", 1.0);
+            double maxCmd = get_or(ap, "maxCmd", 100.0);
+
+            missile.autopilot = std::make_unique<modules::SimpleAccelAutopilot>(gain, maxCmd);
         } else {
             error = "Unknown autopilot type: " + name;
             return false;
