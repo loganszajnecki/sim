@@ -2,7 +2,6 @@
 #include "modules/SimpleAero.hpp"
 #include "modules/PDAutopilot.hpp"
 #include "modules/ProNav.hpp"
-#include "modules/PurePursuitGuidance.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -95,9 +94,6 @@ bool load_from_json(const std::string &path, Missile &missile, FactoryParams &ou
             double N = get_or(g, "N", 3.5);
             double amax = get_or(g, "amax", 50.0);
             missile.guidance = std::make_unique<modules::ProNav>(N, amax);
-        } else if (name == "PurePursuit") {
-            double gain = get_or(g, "gain", 0.5);
-            missile.guidance = std::make_unique<modules::PurePursuitGuidance>(gain);
         } else {
             error = "Unknown guidance type: " + name;
             return false;
