@@ -2,7 +2,7 @@
 
 #include "sim/Components.hpp"
 
-namespace modules {
+namespace models {
 
 /**
  * @brief Simple placeholder aerodynamics and propulsion model (3-DoF).
@@ -60,4 +60,4 @@ private:
     double gravityAccel_;  // +Z is world up
 };
 
-} // namespace modules
+} // namespace models

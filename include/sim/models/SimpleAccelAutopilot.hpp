@@ -2,7 +2,7 @@
 
 #include "sim/Components.hpp"
 
-namespace modules {
+namespace models {
 
 /**
  * @brief Simple placeholder autopilot for 3-DoF simulations.
@@ -54,4 +54,4 @@ private:
 
 };
 
-} // namespace modules
+} // namespace models

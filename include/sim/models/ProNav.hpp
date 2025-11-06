@@ -2,7 +2,7 @@
 #include "sim/Components.hpp"
 #include <algorithm>
 
-namespace modules {
+namespace models {
 
 /**
  * @brief 3D Proportional Navigation (PN) guidance law.
@@ -55,4 +55,4 @@ private:
     double amax_;  // Maximum allowed acceleration magnitude (saturation limit).
 };
 
-} // namespace modules
+} // namespace models

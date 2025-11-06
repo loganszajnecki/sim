@@ -11,7 +11,7 @@ class Missile
 public:
     Missile();
 
-    // public state and modules
+    // public state and models
     State state;
 
     std::unique_ptr<IAerodynamics> aero;

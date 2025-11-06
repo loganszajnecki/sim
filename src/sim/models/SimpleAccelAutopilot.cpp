@@ -1,7 +1,7 @@
-#include "modules/SimpleAccelAutopilot.hpp"
+#include "sim/models/SimpleAccelAutopilot.hpp"
 #include <algorithm> // std::clamp
 
-namespace modules {
+namespace models {
 
 SimpleAccelAutopilot::SimpleAccelAutopilot(double gain, double maxCmd)
     : gain_(gain), maxCmd_(maxCmd) {}
@@ -21,4 +21,4 @@ std::vector<double> SimpleAccelAutopilot::computeActuatorCommand(
     return out;
 }
 
-} // namespace modules
+} // namespace models

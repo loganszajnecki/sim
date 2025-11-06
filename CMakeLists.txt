@@ -38,7 +38,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 file(GLOB_RECURSE SAM_CORE_SRC
   "${PROJECT_SOURCE_DIR}/src/*.cpp"
   "${PROJECT_SOURCE_DIR}/src/sim/*.cpp"
-  "${PROJECT_SOURCE_DIR}/src/modules/*.cpp"
+  "${PROJECT_SOURCE_DIR}/src/models/*.cpp"
   "${PROJECT_SOURCE_DIR}/src/app/*.cpp"
 )
 # Filter out viewer/vis files from the shared list

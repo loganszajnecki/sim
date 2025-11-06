@@ -1,4 +1,4 @@
-#include "modules/ProNav.hpp"
+#include "sim/models/ProNav.hpp"
 #include <cmath>
 
 namespace {
@@ -15,7 +15,7 @@ inline double norm(const double a[3]) {
 }
 }
 
-namespace modules {
+namespace models {
 
 // 3D vector PN: a_cmd = N * Vc * (los_hat x (v_rel x los_hat)) // |r|
 std::vector<double> ProNav::computeGuidanceCommand(const sim::State& m,
@@ -47,4 +47,4 @@ std::vector<double> ProNav::computeGuidanceCommand(const sim::State& m,
 
     return { a_cmd[0], a_cmd[1], a_cmd[2] };
 }
-} // namespace modules
+} // namespace models

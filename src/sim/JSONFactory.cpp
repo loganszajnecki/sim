@@ -1,7 +1,7 @@
 #include "sim/JSONFactory.hpp"
-#include "modules/SimpleAero.hpp"
-#include "modules/SimpleAccelAutopilot.hpp"
-#include "modules/ProNav.hpp"
+#include "sim/models/SimpleAero.hpp"
+#include "sim/models/SimpleAccelAutopilot.hpp"
+#include "sim/models/ProNav.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -68,7 +68,7 @@ bool load_from_json(const std::string &path, Missile &missile, FactoryParams &ou
         }
     }
 
-    // modules
+    // models
     // Aero
     if (j.contains("missile") && j["missile"].contains("aero")) {
         auto a = j["missile"]["aero"];
@@ -77,13 +77,13 @@ bool load_from_json(const std::string &path, Missile &missile, FactoryParams &ou
             double accelGain = get_or(a, "accelGain", 1.0);
             double velDamping = get_or(a, "velDamping", 0.0);
             double thrustAccel = get_or(a, "thrustAccel", 0.0);
-            missile.aero = std::make_unique<modules::SimpleAero>(accelGain, velDamping, thrustAccel);
+            missile.aero = std::make_unique<models::SimpleAero>(accelGain, velDamping, thrustAccel);
         } else {
             error = "Unknown aero type: " + name;
             return false;
         }
     } else {
-        missile.aero = std::make_unique<modules::SimpleAero>(1.0, 0.0, 0.0);
+        missile.aero = std::make_unique<models::SimpleAero>(1.0, 0.0, 0.0);
     }
 
     // Guidance
@@ -93,7 +93,7 @@ bool load_from_json(const std::string &path, Missile &missile, FactoryParams &ou
         if (name == "ProNav") {
             double N = get_or(g, "N", 3.5);
             double amax = get_or(g, "amax", 50.0);
-            missile.guidance = std::make_unique<modules::ProNav>(N, amax);
+            missile.guidance = std::make_unique<models::ProNav>(N, amax);
         } else {
             error = "Unknown guidance type: " + name;
             return false;
@@ -111,7 +111,7 @@ bool load_from_json(const std::string &path, Missile &missile, FactoryParams &ou
             double gain = get_or(ap, "gain", 1.0);
             double maxCmd = get_or(ap, "maxCmd", 100.0);
 
-            missile.autopilot = std::make_unique<modules::SimpleAccelAutopilot>(gain, maxCmd);
+            missile.autopilot = std::make_unique<models::SimpleAccelAutopilot>(gain, maxCmd);
         } else {
             error = "Unknown autopilot type: " + name;
             return false;

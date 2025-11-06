@@ -1,6 +1,6 @@
-#include "modules/SimpleAero.hpp"
+#include "sim/models/SimpleAero.hpp"
 
-namespace modules {
+namespace models {
 
 SimpleAero::SimpleAero(double accelGain, double velDamping, double thrustAccel, double gravityAccel)
     : accelGain_(accelGain), velDamping_(velDamping), thrustAccel_(thrustAccel),
@@ -29,4 +29,4 @@ sim::AeroForces SimpleAero::compute(const sim::State& state,
     return out;
 }
 
-} // namespace modules
+} // namespace models
