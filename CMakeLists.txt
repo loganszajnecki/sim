@@ -21,7 +21,7 @@ function(enable_sanitizers target)
 endfunction()
 
 # -------------------------------
-# Third-party: JSON (always)
+# Third-party: JSON
 # -------------------------------
 include(FetchContent)
 FetchContent_Declare(
@@ -79,6 +79,18 @@ set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glfw)
 
+# Suppress noisy warnings coming from GLFW's own sources
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+  if(TARGET glfw)
+    target_compile_options(glfw PRIVATE
+      -Wno-sign-compare
+      -Wno-missing-field-initializers
+      -Wno-unused-parameter
+      -Wno-pedantic
+    )
+  endif()
+endif()
+
 find_package(OpenGL REQUIRED)
 
 add_library(glad STATIC
@@ -87,6 +99,11 @@ add_library(glad STATIC
 target_include_directories(glad PUBLIC
   ${PROJECT_SOURCE_DIR}/third_party/glad/include
 )
+
+# Suppress pedantic warnings just for glad.c (object ptr -> function ptr casts)
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(glad PRIVATE -Wno-pedantic)
+endif()
 
 add_executable(sam_sim
   ${SAM_CORE_SRC}
