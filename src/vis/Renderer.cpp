@@ -5,6 +5,7 @@
 #include <vector>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace {
 
@@ -145,6 +146,7 @@ bool Renderer::init(const RendererConfig& cfg) {
     initGridAxes_();
     initDynamicVBOs_();
     initGround_();
+    initMissile_();
 
     // basic mouse input
     glfwSetWindowUserPointer(window_, this);
@@ -224,23 +226,56 @@ void Renderer::drawScene() {
     glm::mat4 proj = cam_.proj();
     glm::mat4 vp   = proj * view;
 
+    // Compute animated light once
+    double t = glfwGetTime();           // seconds since start
+    float radius = 2500.0f;
+    float height = 2000.0f;
+    float speed = 0.2f;                 // revolutions per second
+
+    float angle = float(speed * t * 2.0 * M_PI);
+    glm::vec3 lightPos(
+        radius * cos(angle),
+        radius * sin(angle),
+        height
+    );
+    float intensity = 1.2f;
+
+    // --- 1) Draw ground ---
     if (vao_ground_ != 0 && count_ground_ > 0) {
         meshLit_.use();
 
-        glm::mat4 model(1.0f);
+        glm::mat4 model(1.0f); // ground at origin
         meshLit_.setMat4("uModel", model);
         meshLit_.setMat4("uView",  view);
         meshLit_.setMat4("uProj",  proj);
 
-        glm::vec3 lightPos(1500.0f, 1500.0f, 100.0f);
-
         meshLit_.setVec3("uLightPos", lightPos);
-        float intensity = 1.2f;
         meshLit_.setFloat("uLightIntensity", intensity);
-        meshLit_.setVec3("uBaseColor", glm::vec3(0.0f, 0.5f, 0.0f));
+        meshLit_.setVec3("uBaseColor", glm::vec3(0.30f, 0.33f, 0.37f));
 
         glBindVertexArray(vao_ground_);
         glDrawArrays(GL_TRIANGLES, 0, count_ground_);
+        glBindVertexArray(0);
+    }
+
+    if (vao_missile_ != 0 && count_missile_ > 0) {
+        meshLit_.use();
+
+        // Translate missile to its last known position
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), last_m_);
+        // scale the model
+        model = model * glm::scale(glm::mat4(1.0f), glm::vec3(5.0f));
+
+        meshLit_.setMat4("uModel", model);
+        meshLit_.setMat4("uView",  view);
+        meshLit_.setMat4("uProj",  proj);
+
+        meshLit_.setVec3("uLightPos", lightPos);
+        meshLit_.setFloat("uLightIntensity", intensity);
+        meshLit_.setVec3("uBaseColor", glm::vec3(0.85f, 0.85f, 0.90f));
+
+        glBindVertexArray(vao_missile_);
+        glDrawArrays(GL_TRIANGLES, 0, count_missile_);
         glBindVertexArray(0);
     }
 
@@ -316,6 +351,10 @@ void Renderer::shutdown() {
 
     if (vao_trail_t_) { glDeleteVertexArrays(1, &vao_trail_t_); vao_trail_t_ = 0; }
     if (vbo_trail_t_) { glDeleteBuffers(1,       &vbo_trail_t_); vbo_trail_t_ = 0; }
+
+    if (vao_missile_) { glDeleteVertexArrays(1, &vao_missile_); vao_missile_ = 0; }
+    if (vbo_missile_) { glDeleteBuffers(1,       &vbo_missile_); vbo_missile_ = 0; }
+    count_missile_ = 0;
 
     // Shader/program teardown must happen while context is current
     meshLit_.destroy();
@@ -447,6 +486,89 @@ void Renderer::initDynamicVBOs_() {
     glBufferData(GL_ARRAY_BUFFER, trail_cap_ * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void Renderer::initMissile_() {
+    struct VertexPN {
+        glm::vec3 pos;
+        glm::vec3 normal;
+    };
+    const float halfR = 1.0f;   // radius in Y/Z
+    const float length = 8.0f;  // length along +X
+    float x0 = 0.0f;      // tail
+    float x1 = length;    // nose
+
+    // 6 faces, 2 triangles per face, 3 verts per tri = 36 vertices
+    std::vector<VertexPN> verts;
+    verts.reserve(36);
+
+    // helper lambda
+    auto addFace = [&](glm::vec3 n,
+                       glm::vec3 a, glm::vec3 b, glm::vec3 c,
+                       glm::vec3 d) {
+        // quad a-b-c-d as two triangles: (a,b,c), (a,c,d)
+        verts.push_back({a, n});
+        verts.push_back({b, n});
+        verts.push_back({c, n});
+
+        verts.push_back({a, n});
+        verts.push_back({c, n});
+        verts.push_back({d, n});
+    };
+
+    // Define corners (x,y,z)
+    glm::vec3 LDN(x0, -halfR, -halfR); // Left-Down-Near
+    glm::vec3 LUP(x0, -halfR,  halfR); // Left-Up-Near
+    glm::vec3 RDN(x0,  halfR, -halfR); // Right-Down-Near
+    glm::vec3 RUP(x0,  halfR,  halfR); // Right-Up-Near
+
+    glm::vec3 LDF(x1, -halfR, -halfR); // Left-Down-Far
+    glm::vec3 LUF(x1, -halfR,  halfR); // Left-Up-Far
+    glm::vec3 RDF(x1,  halfR, -halfR); // Right-Down-Far
+    glm::vec3 RUF(x1,  halfR,  halfR); // Right-Up-Far
+
+    // +X face (nose)
+    addFace(glm::vec3(1,0,0), LDF, RDF, RUF, LUF);
+    // -X face (tail)
+    addFace(glm::vec3(-1,0,0), RDN, LDN, LUP, RUP);
+
+    // +Y face (right)
+    addFace(glm::vec3(0,1,0), RDF, RDN, RUP, RUF);
+    // -Y face (left)
+    addFace(glm::vec3(0,-1,0), LDN, LDF, LUF, LUP);
+
+    // +Z face (top)
+    addFace(glm::vec3(0,0,1), LUP, LUF, RUF, RUP);
+    // -Z face (bottom)
+    addFace(glm::vec3(0,0,-1), LDN, RDN, RDF, LDF);
+
+    count_missile_ = static_cast<GLsizei>(verts.size()); // should be 36
+
+    glGenVertexArrays(1, &vao_missile_);
+    glGenBuffers(1, &vbo_missile_);
+
+    glBindVertexArray(vao_missile_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_missile_);
+    glBufferData(GL_ARRAY_BUFFER,
+                 verts.size() * sizeof(VertexPN),
+                 verts.data(),
+                 GL_STATIC_DRAW);
+
+    // position attribute
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE, sizeof(VertexPN),
+        (void*)offsetof(VertexPN, pos)
+    );
+    // normal attribute
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(
+        1, 3, GL_FLOAT, GL_FALSE, sizeof(VertexPN),
+        (void*)offsetof(VertexPN, normal)
+    );
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);

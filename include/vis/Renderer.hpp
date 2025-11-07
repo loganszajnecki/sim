@@ -44,6 +44,7 @@ private:
     void initGridAxes_();
     void initDynamicVBOs_();
     void initGround_();
+    void initMissile_();
 
     void drainBus_();
     void drawTrail_(GLuint vao, GLuint vbo, const std::vector<glm::vec3>& pts, const glm::vec3& color);
@@ -61,6 +62,11 @@ private:
     GLuint vao_ground_ = 0;
     GLuint vbo_ground_ = 0;
     GLsizei count_ground_ = 0;
+
+    // Missile mesh (simple box)
+    GLuint vao_missile_ = 0;
+    GLuint vbo_missile_ = 0;
+    GLsizei count_missile_ = 0;
 
     // simple VBO/VAO for lines
     GLuint vao_grid_ = 0, vbo_grid_ = 0, count_grid_ = 0;
