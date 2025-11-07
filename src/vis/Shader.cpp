@@ -1,6 +1,7 @@
 #include "vis/Shader.hpp"
 #include <glm/gtc/type_ptr.hpp>
 #include <cstdio>
+#include "vis/Shader.hpp"
 
 namespace vis {
 
@@ -62,12 +63,22 @@ void Shader::destroy() {
 
 void Shader::setMat4(const char* name, const glm::mat4& m) const {
     GLint loc = glGetUniformLocation(prog_, name);
-    glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(m));
-}
-void Shader::setVec3(const char* name, const glm::vec3& v) const {
-    GLint loc = glGetUniformLocation(prog_, name);
-    glUniform3fv(loc, 1, glm::value_ptr(v));
+    if (loc != -1) glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(m));
 }
 
+void Shader::setVec3(const char* name, const glm::vec3& v) const {
+    GLint loc = glGetUniformLocation(prog_, name);
+    if (loc != -1) glUniform3fv(loc, 1, glm::value_ptr(v));
+}
+
+void Shader::setFloat(const char* name, float v) const {
+    GLint loc = glGetUniformLocation(prog_, name);
+    if (loc != -1) glUniform1f(loc, v);
+}
+
+void Shader::setInt(const char* name, int v) const {
+    GLint loc = glGetUniformLocation(prog_, name);
+    if (loc != -1) glUniform1i(loc, v);
+}
 
 } // namespace vis

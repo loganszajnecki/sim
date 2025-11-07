@@ -43,6 +43,8 @@ private:
     
     void initGridAxes_();
     void initDynamicVBOs_();
+    void initGround_();
+
     void drainBus_();
     void drawTrail_(GLuint vao, GLuint vbo, const std::vector<glm::vec3>& pts, const glm::vec3& color);
     void drawMarkerCross_(const glm::vec3& p, float L, const glm::vec3& color);
@@ -53,6 +55,12 @@ private:
     // cam and shaders
     Camera cam_;
     Shader solid_;
+    Shader meshLit_;
+
+    // ground mesh (triangles)
+    GLuint vao_ground_ = 0;
+    GLuint vbo_ground_ = 0;
+    GLsizei count_ground_ = 0;
 
     // simple VBO/VAO for lines
     GLuint vao_grid_ = 0, vbo_grid_ = 0, count_grid_ = 0;
