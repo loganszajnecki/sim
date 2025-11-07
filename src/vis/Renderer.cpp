@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <vector>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -261,10 +262,53 @@ void Renderer::drawScene() {
     if (vao_missile_ != 0 && count_missile_ > 0) {
         meshLit_.use();
 
-        // Translate missile to its last known position
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), last_m_);
-        // scale the model
+        // ---------------------------------------------------------
+        // TEMPORARY ORIENTATION (pre-6DoF):
+        // Use missile velocity to define body +X direction.
+        //
+        // Later, when 6DoF is implemented, this block will be
+        // replaced by construction from a true attitude (Euler
+        // angles or quaternion -> rotation matrix).
+        // ---------------------------------------------------------
+
+        glm::mat4 model(1.0f);
+
+        // 1) Translate to last missile position
+        model = glm::translate(model, last_m_);
+
+        // 2) Build orientation from velocity
+        glm::vec3 fwd = last_m_vel_; // desired body +X
+        if (glm::length(fwd) < 1e-3f) {
+            // If speed is ~0, fall back to world +X
+            fwd = glm::vec3(1.f, 0.f, 0.f);
+        }
+        fwd = glm::normalize(fwd);
+
+        // Choose a world up direction
+        glm::vec3 worldUp(0.f, 0.f, 1.f);
+
+        // Avoid degeneracy if fwd is almost parallel to worldUp
+        if (std::abs(glm::dot(fwd, worldUp)) > 0.99f) {
+            worldUp = glm::vec3(0.f, 1.f, 0.f);
+        }
+
+        // Build an orthonormal basis: forward (X), right (Y), up (Z)
+        glm::vec3 right = glm::normalize(glm::cross(worldUp, fwd));
+        glm::vec3 up    = glm::cross(fwd, right);
+
+        // Column-major rotation matrix: columns are basis vectors
+        glm::mat4 R(1.0f);
+        R[0] = glm::vec4(fwd,  0.f);  // body X (forward)
+        R[1] = glm::vec4(right, 0.f); // body Y (right)
+        R[2] = glm::vec4(up,    0.f); // body Z (up)
+
+        // Apply rotation after translation
+        model = model * R;
         model = model * glm::scale(glm::mat4(1.0f), glm::vec3(5.0f));
+
+        // ---------------------------------------------------------
+        // END TEMPORARY ORIENTATION BLOCK
+        // ---------------------------------------------------------
 
         meshLit_.setMat4("uModel", model);
         meshLit_.setMat4("uView",  view);
@@ -588,6 +632,8 @@ void Renderer::drainBus_() {
         trail_t_.push_back(pt);
         last_m_ = pm;
         last_t_ = pt;
+        // TEMP (pre-6DoF): capture missile velocity to approximate orientation.
+        last_m_vel_ = glm::vec3{s.mvx, s.mvy, s.mvz};
     }
 
     // cap trail lengths

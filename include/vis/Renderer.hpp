@@ -81,6 +81,11 @@ private:
     std::vector<glm::vec3> trail_t_;
     glm::vec3 last_m_{0.f}, last_t_{0.f};
 
+    // TEMP (pre-6DoF): use missile velocity to approximate body X orientation.
+    // This will be replaced by a true attitude (Euler or quaternion) once the
+    // 6DoF model is in place.
+    glm::vec3 last_m_vel_{1.f, 0.f, 0.f};
+    
     TelemetryBus* bus_ = nullptr;
 
     // input state
