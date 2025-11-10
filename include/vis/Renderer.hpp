@@ -1,12 +1,25 @@
 #pragma once
 #include <string>
+#include <vector>
+#include <memory>
+
 #include <glad/glad.h>
 struct GLFWwindow;
 
 #include <glm/glm.hpp>
-#include <vis/Camera.hpp>
-#include <vis/Shader.hpp>
+
+// includes
+#include "vis/entities/Camera.hpp"
+#include "vis/Shader.hpp"
 #include "vis/Telemetry.hpp"
+
+// 
+#include "vis/render/MasterRenderer.hpp"
+#include "vis/models/TexturedModel.hpp"
+#include "vis/entities/Entity.hpp"
+#include "vis/entities/Light.hpp"
+#include "vis/Loader.hpp"
+#include "vis/OBJLoader.hpp"
 
 namespace vis {
 
@@ -38,6 +51,7 @@ public:
     bool shouldClose() const; // window close state
     bool isInitialized() const { return initialized_; }
     void attachBus(TelemetryBus* bus) { bus_ = bus; }
+
 private:
     bool initialized_ = false; 
     
@@ -52,7 +66,7 @@ private:
 
     // cam and shaders
     Camera cam_;
-    Shader solid_;
+    Shader solid_;   // line/grid shader (kept from old system)
 
     // simple VBO/VAO for lines
     GLuint vao_grid_ = 0, vbo_grid_ = 0, count_grid_ = 0;
@@ -73,6 +87,26 @@ private:
     bool orbiting_ = false;   // LMB drag
     bool panning_  = false;   // MMB drag or Shift+LMB
     double lastx_ = 0.0, lasty_ = 0.0;
+
+    // ----------------------------------------------------------------
+    // New engine-style rendering pieces (Java-inspired architecture)
+    // ----------------------------------------------------------------
+
+    // High-level entity renderer
+    std::unique_ptr<MasterRenderer> master_;
+
+    // Ground + missile as models/entities
+    TexturedModel groundModel_;
+    Entity        groundEntity_;
+
+    TexturedModel missileModel_;
+    Entity        missileEntity_;
+
+    // Simple sun light for lit rendering
+    Light         sun_;
+
+    // GL resource loader (VAOs & VBOs)
+    Loader loader_;
 };
 
 } // namespace vis

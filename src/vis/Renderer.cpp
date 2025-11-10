@@ -6,6 +6,13 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include "vis/render/MasterRenderer.hpp"
+#include "vis/models/RawModel.hpp"
+#include "vis/models/ModelTexture.hpp"
+#include "vis/models/TexturedModel.hpp"
+#include "vis/entities/Entity.hpp"
+#include "vis/entities/Light.hpp"
+
 namespace {
 
 void glfw_error_callback(int code, const char* desc) {
@@ -143,6 +150,53 @@ bool Renderer::init(const RendererConfig& cfg) {
     std::fprintf(stderr, "[Viewer] GL Vendor  : %s\n", glGetString(GL_VENDOR));
     std::fprintf(stderr, "[Viewer] GL Renderer: %s\n", glGetString(GL_RENDERER));
     std::fprintf(stderr, "[Viewer] GL Version : %s\n", glGetString(GL_VERSION));
+
+        // --------------------------------------------------------
+    // New: initialize simple light and MasterRenderer
+    // --------------------------------------------------------
+
+    // Simple far-away sun light
+    sun_.position = glm::vec3(0.0f, 0.0f, 5000.0f);
+    sun_.color    = glm::vec3(1.0f, 1.0f, 1.0f);
+
+    // Create the master renderer using the current camera projection
+    // (adjust shader paths to match where you put entity.vert/frag)
+    master_ = std::make_unique<MasterRenderer>(
+        cam_,
+        "../res/shaders/entity.vert",
+        "../res/shaders/entity.frag"
+    );
+    master_->setSkyColor(glm::vec3(0.08f, 0.09f, 0.10f));
+
+    try {
+        // assumes you have "res/missile.obj" (or any name you choose)
+        RawModel missileRaw = OBJLoader::loadObjModel("tree", loader_);
+
+        ModelTexture missileTex{};
+        missileTex.id              = 0;      // no texture yet (just use vertex color in shader)
+        missileTex.shineDamper     = 10.0f;
+        missileTex.reflectivity    = 0.9f;
+        missileTex.hasTransparency = false;
+        missileTex.useFakeLighting = false;
+
+        missileModel_  = TexturedModel{missileRaw, missileTex};
+        missileEntity_ = Entity(&missileModel_, glm::vec3(0.0f),
+                                glm::vec3{90.0f,0.0f,0.0f}, 20.0f);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[Renderer] Failed to load missile OBJ: %s\n",
+                     e.what());
+        missileEntity_.model   = nullptr;
+        missileEntity_.position= glm::vec3(0.0f);
+        missileEntity_.rotation= glm::vec3(0.0f);
+        missileEntity_.scale   = 1.0f;
+    }
+
+    // Ground can stay null for now, or you can load a plane OBJ similarly:
+    groundEntity_.model    = nullptr;
+    groundEntity_.position = glm::vec3(0.0f);
+    groundEntity_.rotation = glm::vec3(0.0f);
+    groundEntity_.scale    = 1.0f;
+
     initialized_ = true; 
     return true;
     
@@ -165,7 +219,28 @@ void Renderer::drawScene() {
     // recompute proj on resize
     cam_.setViewport(fbw_, fbh_);
     cam_.setProj(60.f, 0.1f, 100000.f);
-    glm::mat4 vp = cam_.proj() * cam_.view();
+    glm::mat4 view = cam_.view();
+    glm::mat4 proj = cam_.proj();
+    glm::mat4 vp   = proj * view;
+
+    // Update telemetry first so last_m_ / last_t_ are fresh
+    drainBus_();
+
+    // --- New: update missile entity from telemetry and render entities ---
+    if (master_) {
+        // Use last_m_ as the missile position in world space
+        missileEntity_.position = last_m_;
+
+        // (Optional) orientation from velocity can be added later via rotation
+
+        // If/when groundEntity_.model is set, you can also process it here:
+        // master_->processEntity(groundEntity_);
+
+        // Only process missile for now
+        master_->processEntity(missileEntity_);
+        master_->render(sun_, cam_);
+    }
+
 
     solid_.use();
     solid_.setMat4("uVP", vp);
@@ -184,16 +259,6 @@ void Renderer::drawScene() {
     // Z axis (blue)
     solid_.setVec3("uColor", {0.2f,0.4f,0.9f}); glDrawArrays(GL_LINES, 4, 2);
     glBindVertexArray(0);
-
-    drainBus_();
-    // static double dbg_t0 = glfwGetTime();
-    // double now = glfwGetTime();
-    // if (now - dbg_t0 > 1.0) {
-    //     std::fprintf(stderr,
-    //         "[dbg] last_m=(%.1f,%.1f,%.1f)  last_t=(%.1f,%.1f,%.1f)\n",
-    //         last_m_.x, last_m_.y, last_m_.z, last_t_.x, last_t_.y, last_t_.z);
-    //     dbg_t0 = now;
-    // }
 
     drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {0.0f, 1.0f, 0.0f});
     drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_, {1.0f, 0.0f, 0.0f});
@@ -243,6 +308,7 @@ void Renderer::shutdown() {
 
     // Shader/program teardown must happen while context is current
     solid_.destroy();  // no-op if not compiled; leaves program id = 0
+    loader_.cleanUp();
 
     // --- Destroy the window LAST (kills the context) ---
     if (window_) {

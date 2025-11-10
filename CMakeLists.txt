@@ -47,6 +47,9 @@ list(FILTER SAM_CORE_SRC EXCLUDE REGEX ".*/src/vis/.*")
 # Viewer sources only
 file(GLOB_RECURSE SAM_VIS_SRC
   "${PROJECT_SOURCE_DIR}/src/vis/*.cpp"
+  "${PROJECT_SOURCE_DIR}/src/vis/entities/*.cpp"
+  "${PROJECT_SOURCE_DIR}/src/vis/models/*.cpp"
+  "${PROJECT_SOURCE_DIR}/src/vis/shaders/*.cpp"
 )
 
 # -------------------------------
