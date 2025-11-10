@@ -50,6 +50,7 @@ file(GLOB_RECURSE SAM_VIS_SRC
   "${PROJECT_SOURCE_DIR}/src/vis/entities/*.cpp"
   "${PROJECT_SOURCE_DIR}/src/vis/models/*.cpp"
   "${PROJECT_SOURCE_DIR}/src/vis/shaders/*.cpp"
+  "${PROJECT_SOURCE_DIR}/third_party/stb_image/stb_image.cpp"
 )
 
 # -------------------------------
@@ -115,6 +116,7 @@ add_executable(sam_sim
 target_include_directories(sam_sim PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/third_party/glad/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb_image
 )
 target_compile_definitions(sam_sim PRIVATE APP_WITH_VIEWER=1)
 

@@ -28,15 +28,16 @@ protected:
     void getAllUniformLocations() override;
 
 private:
-    GLint loc_transformation_ = -1;
-    GLint loc_projection_     = -1;
-    GLint loc_view_           = -1;
-    GLint loc_lightPos_       = -1;
-    GLint loc_lightColor_     = -1;
-    GLint loc_shineDamper_    = -1;
-    GLint loc_reflectivity_   = -1;
-    GLint loc_useFakeLighting_= -1;
-    GLint loc_skyColor_       = -1;
+    GLint loc_transformation_     = -1;
+    GLint loc_projection_         = -1;
+    GLint loc_view_               = -1;
+    GLint loc_lightPos_           = -1;
+    GLint loc_lightColor_         = -1;
+    GLint loc_shineDamper_        = -1;
+    GLint loc_reflectivity_       = -1;
+    GLint loc_useFakeLighting_    = -1;
+    GLint loc_skyColor_           = -1;
+    GLint location_textureSampler = -1;
 };
 
 } // namespace vis

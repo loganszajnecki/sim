@@ -7,10 +7,20 @@ namespace vis {
 EntityShader::EntityShader(const std::string& vertPath, const std::string& fragPath)
     : ShaderProgram(vertPath, fragPath)
 {
+    // 1) Bind attributes BEFORE linking (so locations are fixed)
     bindAttributes();
+
+    // 2) Link & validate the program (only if ShaderProgram DOESN'T already do this)
     glLinkProgram(program_);
     glValidateProgram(program_);
+
+    // 3) Query all uniform locations (including textureSampler)
     getAllUniformLocations();
+
+    // 4) Tell GLSL that `textureSampler` uses texture unit 0
+    start();
+    loadInt(location_textureSampler, 0);  // textureSampler -> GL_TEXTURE0
+    stop();
 }
 
 void EntityShader::bindAttributes() {
@@ -20,15 +30,16 @@ void EntityShader::bindAttributes() {
 }
 
 void EntityShader::getAllUniformLocations() {
-    loc_transformation_ = getUniformLocation("transformationMatrix");
-    loc_projection_     = getUniformLocation("projectionMatrix");
-    loc_view_           = getUniformLocation("viewMatrix");
-    loc_lightPos_       = getUniformLocation("lightPosition");
-    loc_lightColor_     = getUniformLocation("lightColor");
-    loc_shineDamper_    = getUniformLocation("shineDamper");
-    loc_reflectivity_   = getUniformLocation("reflectivity");
-    loc_useFakeLighting_= getUniformLocation("useFakeLighting");
-    loc_skyColor_       = getUniformLocation("skyColor");
+    loc_transformation_     = getUniformLocation("transformationMatrix");
+    loc_projection_         = getUniformLocation("projectionMatrix");
+    loc_view_               = getUniformLocation("viewMatrix");
+    loc_lightPos_           = getUniformLocation("lightPosition");
+    loc_lightColor_         = getUniformLocation("lightColor");
+    loc_shineDamper_        = getUniformLocation("shineDamper");
+    loc_reflectivity_       = getUniformLocation("reflectivity");
+    loc_useFakeLighting_    = getUniformLocation("useFakeLighting");
+    loc_skyColor_           = getUniformLocation("skyColor");
+    location_textureSampler = getUniformLocation("textureSampler");
 }
 
 

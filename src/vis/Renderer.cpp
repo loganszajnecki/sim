@@ -156,7 +156,7 @@ bool Renderer::init(const RendererConfig& cfg) {
     // --------------------------------------------------------
 
     // Simple far-away sun light
-    sun_.position = glm::vec3(0.0f, 0.0f, 5000.0f);
+    sun_.position = glm::vec3(20000.0f, 20000.0f, 20000.0f);
     sun_.color    = glm::vec3(1.0f, 1.0f, 1.0f);
 
     // Create the master renderer using the current camera projection
@@ -173,7 +173,7 @@ bool Renderer::init(const RendererConfig& cfg) {
         RawModel missileRaw = OBJLoader::loadObjModel("tree", loader_);
 
         ModelTexture missileTex{};
-        missileTex.id              = 0;      // no texture yet (just use vertex color in shader)
+        missileTex.id = loader_.loadTexture("tree");
         missileTex.shineDamper     = 10.0f;
         missileTex.reflectivity    = 0.9f;
         missileTex.hasTransparency = false;

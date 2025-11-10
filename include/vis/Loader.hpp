@@ -42,6 +42,7 @@ private:
 private:
     std::vector<GLuint> vaos_;
     std::vector<GLuint> vbos_;
+    std::vector<GLuint> textures_;
 };
 
 } // namespace vis

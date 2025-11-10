@@ -34,13 +34,11 @@ void main(void) {
 	float dampedFactor = pow(specularFactor, shineDamper);
 	vec3 finalSpecular = dampedFactor * reflectivity * lightColor;
 	
-	//vec4 textureColor = texture(textureSampler, pass_textureCoords);
-	//if(textureColor.a<0.5){
-	//	discard;
-	//}
-	//out_Color = vec4(diffuse,1.0) * textureColor + vec4(finalSpecular, 1.0);
-	vec3 baseColor = vec3(0.85, 0.85, 0.90); // light grey missile
-	vec3 litColor  = diffuse * baseColor + finalSpecular;
-	out_Color      = vec4(litColor, 1.0);
+	vec4 textureColor = texture(textureSampler, pass_textureCoords);
+	if(textureColor.a<0.5){
+		discard;
+	}
+	
+	out_Color = vec4(diffuse,1.0) * textureColor + vec4(finalSpecular, 1.0);
 	out_Color = mix(vec4(skyColor,1.0), out_Color, visibility);
 }
