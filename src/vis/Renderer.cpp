@@ -23,18 +23,6 @@ void framebuffer_size_callback(GLFWwindow*, int w, int h) {
     glViewport(0, 0, w, h);
 }
 
-const char* VS_LINES = R"(#version 330 core
-layout(location=0) in vec3 aPos;
-uniform mat4 uVP;
-void main(){ gl_Position = uVP * vec4(aPos,1.0); }
-)";
-
-const char* FS_LINES = R"(#version 330 core
-uniform vec3 uColor;
-out vec4 FragColor;
-void main(){ FragColor = vec4(uColor,1.0); }
-)";
-
 } // namespace
 
 namespace vis {
@@ -87,8 +75,10 @@ bool Renderer::init(const RendererConfig& cfg) {
     glEnable(GL_DEPTH_TEST);
 
     // compile shader
-    if(!solid_.compile(VS_LINES, FS_LINES)) return false;
-
+    lineShader_ = std::make_unique<LineShader>(
+        "../res/shaders/line.vert",
+        "../res/shaders/line.frag"
+    );
     // camera
     cam_.setViewport(fbw_, fbh_);
     cam_.setProj(60.f, 0.1f, 100000.f);
@@ -160,7 +150,6 @@ bool Renderer::init(const RendererConfig& cfg) {
     sun_.color    = glm::vec3(1.0f, 1.0f, 1.0f);
 
     // Create the master renderer using the current camera projection
-    // (adjust shader paths to match where you put entity.vert/frag)
     master_ = std::make_unique<MasterRenderer>(
         cam_,
         "../res/shaders/entity.vert",
@@ -242,22 +231,30 @@ void Renderer::drawScene() {
     }
 
 
-    solid_.use();
-    solid_.setMat4("uVP", vp);
+    // --- line shader for grid / axes / trails / markers ---
+    lineShader_->start();
+    lineShader_->loadVP(vp);
 
-    // draw grid (grey)
-    solid_.setVec3("uColor", {0.35f, 0.37f, 0.40f});
-    glBindVertexArray(vao_grid_);
-    glDrawArrays(GL_LINES, 0, count_grid_);
+    // draw grid (grey) (optional)
+    if (vao_grid_ != 0 && count_grid_ > 0) {
+        lineShader_->loadColor(glm::vec3(0.35f, 0.37f, 0.40f));
+        glBindVertexArray(vao_grid_);
+        glDrawArrays(GL_LINES, 0, count_grid_);
+    }
 
     // draw axes (RGB)
-    glBindVertexArray(vao_axes_);
-    // X axis (red)
-    solid_.setVec3("uColor", {0.9f,0.2f,0.2f}); glDrawArrays(GL_LINES, 0, 2);
-    // Y axis (green)
-    solid_.setVec3("uColor", {0.2f,0.9f,0.2f}); glDrawArrays(GL_LINES, 2, 2);
-    // Z axis (blue)
-    solid_.setVec3("uColor", {0.2f,0.4f,0.9f}); glDrawArrays(GL_LINES, 4, 2);
+    if (vao_axes_ != 0 && count_axes_ > 0) {
+        glBindVertexArray(vao_axes_);
+        // X (red)
+        lineShader_->loadColor(glm::vec3(0.9f, 0.2f, 0.2f));
+        glDrawArrays(GL_LINES, 0, 2);
+        // Y (green)
+        lineShader_->loadColor(glm::vec3(0.2f, 0.9f, 0.2f));
+        glDrawArrays(GL_LINES, 2, 2);
+        // Z (blue)
+        lineShader_->loadColor(glm::vec3(0.2f, 0.4f, 0.9f));
+        glDrawArrays(GL_LINES, 4, 2);
+    }
     glBindVertexArray(0);
 
     drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {0.0f, 1.0f, 0.0f});
@@ -265,6 +262,7 @@ void Renderer::drawScene() {
 
     drawMarkerCross_(last_m_, 20.f, {0.0f, 1.0f, 0.0f});
     drawMarkerCross_(last_t_, 60.f, {1.0f, 0.0f, 0.0f});
+    lineShader_->stop();
 }
 
 void Renderer::endFrame() {
@@ -307,7 +305,6 @@ void Renderer::shutdown() {
     if (vbo_trail_t_) { glDeleteBuffers(1,       &vbo_trail_t_); vbo_trail_t_ = 0; }
 
     // Shader/program teardown must happen while context is current
-    solid_.destroy();  // no-op if not compiled; leaves program id = 0
     loader_.cleanUp();
 
     // --- Destroy the window LAST (kills the context) ---
@@ -316,9 +313,7 @@ void Renderer::shutdown() {
         window_ = nullptr;
     }
 
-    // NOTE: Do NOT call glfwTerminate() here unless Renderer also owns glfwInit().
-    // If you do manage init/terminate in this class, add a static refcount and
-    // only call glfwTerminate() when the last Renderer shuts down.
+    lineShader_.reset();
 }
 
 // Z-up: grid on the XY plane (Z = 0), axes: X=red, Y=green, Z=blue
@@ -422,38 +417,50 @@ void Renderer::drainBus_() {
     clip(trail_t_);
 }
 
-void Renderer::drawTrail_(GLuint vao, GLuint vbo, const std::vector<glm::vec3>& pts, const glm::vec3& color) {
+void Renderer::drawTrail_(GLuint vao, GLuint vbo,
+                          const std::vector<glm::vec3>& pts,
+                          const glm::vec3& color)
+{
     if (pts.empty()) return;
+
+    lineShader_->loadColor(color);           // set line color
+
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    // upload current points (bounded by trail_cap_)
-    glBufferSubData(GL_ARRAY_BUFFER, 0, pts.size()*sizeof(glm::vec3), pts.data());
-    solid_.setVec3("uColor", color);
+    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                    pts.size() * sizeof(glm::vec3),
+                    pts.data());
+
     glDrawArrays(GL_LINE_STRIP, 0, (GLsizei)pts.size());
     glBindVertexArray(0);
 }
 
-void Renderer::drawMarkerCross_(const glm::vec3& p, float L, const glm::vec3& color) {
+void Renderer::drawMarkerCross_(const glm::vec3& p, float L,
+                                const glm::vec3& color)
+{
     glm::vec3 lines[] = {
         {p.x - L, p.y,     p.z}, {p.x + L, p.y,     p.z}, // X
         {p.x,     p.y - L, p.z}, {p.x,     p.y + L, p.z}, // Y
         {p.x,     p.y,     p.z - L}, {p.x, p.y, p.z + L}  // Z
     };
-    GLuint vao=0, vbo=0;
-    glGenVertexArrays(1,&vao);
-    glGenBuffers(1,&vbo);
+
+    GLuint vao = 0, vbo = 0;
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(lines), lines, GL_STREAM_DRAW);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(glm::vec3),(void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
+                          sizeof(glm::vec3), (void*)0);
 
-    solid_.setVec3("uColor", color);
+    lineShader_->loadColor(color);
     glDrawArrays(GL_LINES, 0, 6);
 
     glBindVertexArray(0);
-    glDeleteBuffers(1,&vbo);
-    glDeleteVertexArrays(1,&vao);
+    glDeleteBuffers(1, &vbo);
+    glDeleteVertexArrays(1, &vao);
 }
 
 }

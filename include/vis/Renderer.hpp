@@ -10,7 +10,6 @@ struct GLFWwindow;
 
 // includes
 #include "vis/entities/Camera.hpp"
-#include "vis/Shader.hpp"
 #include "vis/Telemetry.hpp"
 
 // 
@@ -20,6 +19,7 @@ struct GLFWwindow;
 #include "vis/entities/Light.hpp"
 #include "vis/Loader.hpp"
 #include "vis/OBJLoader.hpp"
+#include "vis/shaders/LineShader.hpp"
 
 namespace vis {
 
@@ -66,7 +66,7 @@ private:
 
     // cam and shaders
     Camera cam_;
-    Shader solid_;   // line/grid shader (kept from old system)
+    std::unique_ptr<LineShader> lineShader_;
 
     // simple VBO/VAO for lines
     GLuint vao_grid_ = 0, vbo_grid_ = 0, count_grid_ = 0;
