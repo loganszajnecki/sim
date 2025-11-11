@@ -1,7 +1,9 @@
 #include "sim/JSONFactory.hpp"
+
 #include "sim/models/SimpleAero.hpp"
 #include "sim/models/SimpleAccelAutopilot.hpp"
 #include "sim/models/ProNav.hpp"
+
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -10,114 +12,173 @@ namespace sim {
 
 using nlohmann::json;
 
-static bool read_json_file(const std::string& path, json& j, std::string& err)
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+namespace {
+
+// Read JSON file from disk into a nlohmann::json object.
+bool read_json_file(const std::string& path, json& j, std::string& err)
 {
     std::ifstream f(path);
     if (!f) {
         err = "Cannot open config file: " + path + "\n";
         return false;
     }
+
     try {
         f >> j;
     } catch (const std::exception& e) {
         err = std::string("JSON parse error: ") + e.what();
         return false;
     }
+
     return true;
 }
 
-static double get_or(const json& j, const char* key, double def)
+// Convenience: get double value or default.
+double get_or(const json& j, const char* key, double def)
 {
     return j.contains(key) ? j.at(key).get<double>() : def;
 }
 
-bool load_from_json(const std::string &path, Missile &missile, FactoryParams &out, std::string &error)
+} // anonymous namespace
+
+// -----------------------------------------------------------------------------
+// Public API
+// -----------------------------------------------------------------------------
+
+bool load_from_json(const std::string& path,
+                    Missile& missile,
+                    FactoryParams& out,
+                    std::string& error)
 {
     json j;
-    if (!read_json_file(path, j, error)) return false;
+    if (!read_json_file(path, j, error)) {
+        return false;
+    }
 
-    // timings
+    // -------------------------------------------------------------------------
+    // Timing parameters.
+    // -------------------------------------------------------------------------
     out.t0 = j.value("t0", 0.0);
     out.tf = j.value("tf", 60.0);
-    out.h  = j.value("h", 0.01);
+    out.h  = j.value("h",  0.01);
 
-    // initial missile state
-    out.missile0 = State(6);
+    // Ensure initial states are correctly sized for the current model.
+    out.missile0 = State(Missile::Indices::Size);
+    out.target0  = State(Missile::Indices::Size);
+
+    // -------------------------------------------------------------------------
+    // Initial missile state.
+    // -------------------------------------------------------------------------
     if (j.contains("initial_state")) {
-        auto is = j["initial_state"];
-        auto pos = is.value("pos", std::vector<double>{0,0,0});
-        auto vel = is.value("vel", std::vector<double>{0,0,0});
-        for (int i = 0; i < 3 && i < (int)pos.size(); ++i) {
+        const auto& is = j["initial_state"];
+
+        const auto pos = is.value("pos", std::vector<double>{0.0, 0.0, 0.0});
+        const auto vel = is.value("vel", std::vector<double>{0.0, 0.0, 0.0});
+
+        for (std::size_t i = 0; i < 3 && i < pos.size(); ++i) {
             out.missile0.x[i] = pos[i];
         }
-        for (int i = 0; i < 3 && i < (int)vel.size(); ++i) {
-            out.missile0.x[3+i] = vel[i];
-        }
-    }
-    // target state
-    out.target0 = State(6);
-    if (j.contains("target")) {
-        auto is = j["target"];
-        auto pos = is.value("pos", std::vector<double>{0,0,0});
-        auto vel = is.value("vel", std::vector<double>{0,0,0});
-        for (int i = 0; i < 3 && i < (int)pos.size(); ++i) {
-            out.target0.x[i] = pos[i];
-        }
-        for (int i = 0; i < 3 && i < (int)vel.size(); ++i) {
-            out.target0.x[3+i] = vel[i];
+        for (std::size_t i = 0; i < 3 && i < vel.size(); ++i) {
+            out.missile0.x[3 + i] = vel[i];
         }
     }
 
-    // models
+    // -------------------------------------------------------------------------
+    // Initial target state.
+    // -------------------------------------------------------------------------
+    if (j.contains("target")) {
+        const auto& ts = j["target"];
+
+        const auto pos = ts.value("pos", std::vector<double>{0.0, 0.0, 0.0});
+        const auto vel = ts.value("vel", std::vector<double>{0.0, 0.0, 0.0});
+
+        for (std::size_t i = 0; i < 3 && i < pos.size(); ++i) {
+            out.target0.x[i] = pos[i];
+        }
+        for (std::size_t i = 0; i < 3 && i < vel.size(); ++i) {
+            out.target0.x[3 + i] = vel[i];
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Models: missile.aero / missile.guidance / missile.autopilot
+    // -------------------------------------------------------------------------
+
+    // Look up "missile" subtree once.
+    const bool hasMissile = j.contains("missile");
+    const json& missileCfg = hasMissile ? j["missile"] : json::object();
+
     // Aero
-    if (j.contains("missile") && j["missile"].contains("aero")) {
-        auto a = j["missile"]["aero"];
+    if (hasMissile && missileCfg.contains("aero")) {
+        const auto& a = missileCfg["aero"];
         std::string name = a.value("type", std::string("SimpleAero"));
+
         if (name == "SimpleAero") {
-            double accelGain = get_or(a, "accelGain", 1.0);
-            double velDamping = get_or(a, "velDamping", 0.0);
-            double thrustAccel = get_or(a, "thrustAccel", 0.0);
-            missile.aero = std::make_unique<models::SimpleAero>(accelGain, velDamping, thrustAccel);
+            const double accelGain   = get_or(a, "accelGain",   1.0);
+            const double velDamping  = get_or(a, "velDamping",  0.0);
+            const double thrustAccel = get_or(a, "thrustAccel", 0.0);
+
+            missile.aero = std::make_unique<models::SimpleAero>(
+                accelGain,
+                velDamping,
+                thrustAccel
+                // gravityAccel uses default in SimpleAero
+            );
         } else {
             error = "Unknown aero type: " + name;
             return false;
         }
     } else {
+        // Default aero model if none specified.
         missile.aero = std::make_unique<models::SimpleAero>(1.0, 0.0, 0.0);
     }
 
     // Guidance
-    if (j.contains("missile") && j["missile"].contains("guidance")) {
-        auto g = j["missile"]["guidance"];
+    if (hasMissile && missileCfg.contains("guidance")) {
+        const auto& g = missileCfg["guidance"];
         std::string name = g.value("type", std::string("ProNav"));
+
         if (name == "ProNav") {
-            double N = get_or(g, "N", 3.5);
-            double amax = get_or(g, "amax", 50.0);
+            const double N    = get_or(g, "N",    3.5);
+            const double amax = get_or(g, "amax", 50.0);
+
             missile.guidance = std::make_unique<models::ProNav>(N, amax);
         } else {
             error = "Unknown guidance type: " + name;
             return false;
         }
     }
+    // Note: If no guidance block is provided, guidance remains null and it is
+    // the caller's responsibility to set a default if desired.
 
     // Autopilot
-    if (j.contains("missile") && j["missile"].contains("autopilot")) {
-        auto ap = j["missile"]["autopilot"];
+    if (hasMissile && missileCfg.contains("autopilot")) {
+        const auto& ap = missileCfg["autopilot"];
 
-        // Default to simple placeholder autopilot
+        // Default to simple placeholder autopilot.
         std::string name = ap.value("type", std::string("SimpleAccel"));
 
         if (name == "SimpleAccel") {
-            double gain = get_or(ap, "gain", 1.0);
-            double maxCmd = get_or(ap, "maxCmd", 100.0);
+            const double gain   = get_or(ap, "gain",   1.0);
+            const double maxCmd = get_or(ap, "maxCmd", 100.0);
 
-            missile.autopilot = std::make_unique<models::SimpleAccelAutopilot>(gain, maxCmd);
+            missile.autopilot = std::make_unique<models::SimpleAccelAutopilot>(
+                gain,
+                maxCmd
+            );
         } else {
             error = "Unknown autopilot type: " + name;
             return false;
         }
     }
+    // Note: If no autopilot block is provided, autopilot remains null and it is
+    // the caller's responsibility to set a default if desired.
 
     return true;
 }
+
 } // namespace sim

@@ -3,12 +3,15 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+
 #include <glm/gtc/type_ptr.hpp>
-#include "vis/shaders/ShaderProgram.hpp"
 
 namespace vis {
 
-static std::string readTextFile(const std::string& path)
+namespace {
+
+// Simple file loader; logs on failure and returns empty string.
+std::string readTextFile(const std::string& path)
 {
     std::ifstream f(path);
     if (!f) {
@@ -19,6 +22,8 @@ static std::string readTextFile(const std::string& path)
     ss << f.rdbuf();
     return ss.str();
 }
+
+} // anonymous namespace
 
 GLuint ShaderProgram::loadShaderFromFile(const std::string& path, GLenum type)
 {
@@ -41,12 +46,15 @@ GLuint ShaderProgram::loadShaderFromFile(const std::string& path, GLenum type)
         glGetShaderInfoLog(id, logLen, nullptr, log.data());
         std::cerr << "[ShaderProgram] Compile error in " << path << ":\n"
                   << log << "\n";
+        // NOTE: We keep the shader object alive here; in a more strict
+        // setup, you might delete it and throw instead.
     }
 
     return id;
 }
 
-ShaderProgram::ShaderProgram(const std::string &vertPath, const std::string &fragPath)
+ShaderProgram::ShaderProgram(const std::string& vertPath,
+                             const std::string& fragPath)
 {
     vert_ = loadShaderFromFile(vertPath, GL_VERTEX_SHADER);
     frag_ = loadShaderFromFile(fragPath, GL_FRAGMENT_SHADER);
@@ -61,17 +69,25 @@ ShaderProgram::~ShaderProgram()
     destroy();
 }
 
-ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept 
+ShaderProgram::ShaderProgram(ShaderProgram&& other) noexcept
+    : program_(other.program_)
+    , vert_(other.vert_)
+    , frag_(other.frag_)
 {
-    *this = std::move(other);
+    other.program_ = 0;
+    other.vert_    = 0;
+    other.frag_    = 0;
 }
 
-ShaderProgram& ShaderProgram::operator=(ShaderProgram&& other) noexcept {
+ShaderProgram& ShaderProgram::operator=(ShaderProgram&& other) noexcept
+{
     if (this != &other) {
         destroy();
+
         program_ = other.program_;
         vert_    = other.vert_;
         frag_    = other.frag_;
+
         other.program_ = 0;
         other.vert_    = 0;
         other.frag_    = 0;
@@ -79,18 +95,22 @@ ShaderProgram& ShaderProgram::operator=(ShaderProgram&& other) noexcept {
     return *this;
 }
 
-void ShaderProgram::start() const {
+void ShaderProgram::start() const
+{
     glUseProgram(program_);
 }
 
-
-void ShaderProgram::stop() const {
+void ShaderProgram::stop() const
+{
     glUseProgram(0);
 }
 
-void ShaderProgram::destroy() {
+void ShaderProgram::destroy()
+{
     if (program_ != 0) {
+        // Unbind to avoid leaving a deleted program bound.
         glUseProgram(0);
+
         if (vert_ != 0) {
             glDetachShader(program_, vert_);
             glDeleteShader(vert_);
@@ -101,38 +121,45 @@ void ShaderProgram::destroy() {
         }
         glDeleteProgram(program_);
     }
+
     program_ = 0;
     vert_    = 0;
     frag_    = 0;
 }
 
-
-GLint ShaderProgram::getUniformLocation(const char* name) const {
+GLint ShaderProgram::getUniformLocation(const char* name) const
+{
     return glGetUniformLocation(program_, name);
 }
 
-void ShaderProgram::bindAttribute(GLuint index, const char* name) {
+void ShaderProgram::bindAttribute(GLuint index, const char* name)
+{
     glBindAttribLocation(program_, index, name);
 }
 
 // uniform helpers
-void ShaderProgram::loadFloat(GLint location, float v) const {
+void ShaderProgram::loadFloat(GLint location, float v) const
+{
     glUniform1f(location, v);
 }
 
-void ShaderProgram::loadInt(GLint location, int v) const {
+void ShaderProgram::loadInt(GLint location, int v) const
+{
     glUniform1i(location, v);
 }
 
-void ShaderProgram::loadBool(GLint location, bool v) const {
+void ShaderProgram::loadBool(GLint location, bool v) const
+{
     glUniform1f(location, v ? 1.0f : 0.0f);
 }
 
-void ShaderProgram::loadVec3(GLint location, const glm::vec3& v) const {
+void ShaderProgram::loadVec3(GLint location, const glm::vec3& v) const
+{
     glUniform3f(location, v.x, v.y, v.z);
 }
 
-void ShaderProgram::loadMat4(GLint location, const glm::mat4& m) const {
+void ShaderProgram::loadMat4(GLint location, const glm::mat4& m) const
+{
     glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(m));
 }
 

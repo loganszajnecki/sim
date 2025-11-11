@@ -1,12 +1,15 @@
 #include "vis/Loader.hpp"
+
 #include <stb_image.h>
 #include <stdexcept>
-#include <glm/glm.hpp>
 
 namespace vis {
 
 Loader::~Loader()
 {
+    // RAII: ensure all GL resources created by this loader are released.
+    // Renderer::shutdown() also calls cleanUp() before destroying the context,
+    // so this may be a second (safe) call with empty vectors.
     cleanUp();
 }
 
@@ -42,8 +45,8 @@ RawModel Loader::loadToVAO(const std::vector<float>& positions,
 
     unbindVAO();
 
-    RawModel model;
-    model.vao = vao;
+    RawModel model{};
+    model.vao        = vao;
     model.indexCount = static_cast<GLsizei>(indices.size());
     return model;
 }
@@ -52,7 +55,9 @@ void Loader::storeDataInAttributeList(GLuint attribIndex,
                                       GLint  componentCount,
                                       const std::vector<float>& data)
 {
-    if (data.empty()) return;
+    if (data.empty()) {
+        return;
+    }
 
     GLuint vbo = 0;
     glGenBuffers(1, &vbo);
@@ -77,15 +82,16 @@ void Loader::storeDataInAttributeList(GLuint attribIndex,
 
 GLuint Loader::loadTexture(const std::string& fileName)
 {
-    // Expects res/<fileName>.png... TODO: cleanup paths
-    std::string path = "../res/" + fileName + ".png";
+    // Expects ../res/<fileName>.png
+    const std::string path = "../res/" + fileName + ".png";
 
-    int width = 0, height = 0, channels = 0;
-    //stbi_set_flip_vertically_on_load(true);
+    int width   = 0;
+    int height  = 0;
+    int channels= 0;
 
     unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, 4);
     if (!data) {
-        throw std::runtime_error("Failed to load texture: " + path); // TODO: cleanup exceptions and errors
+        throw std::runtime_error("Failed to load texture: " + path);
     }
 
     GLuint tex = 0;
@@ -118,7 +124,9 @@ GLuint Loader::loadTexture(const std::string& fileName)
 
 void Loader::bindIndicesBuffer(const std::vector<unsigned int>& indices) 
 {
-    if (indices.empty()) return;
+    if (indices.empty()) {
+        return;
+    }
 
     GLuint vbo = 0;
     glGenBuffers(1, &vbo);
@@ -136,7 +144,8 @@ void Loader::unbindVAO()
     glBindVertexArray(0);
 }
 
-void Loader::cleanUp() {
+void Loader::cleanUp()
+{
     for (auto vao : vaos_) {
         glDeleteVertexArrays(1, &vao);
     }
@@ -146,6 +155,7 @@ void Loader::cleanUp() {
     for (auto tex : textures_) {
         glDeleteTextures(1, &tex);
     }
+
     vaos_.clear();
     vbos_.clear();
     textures_.clear();
