@@ -1,6 +1,11 @@
+// ProNav.hpp
 #pragma once
+
 #include "sim/Components.hpp"
+#include "sim/State.hpp"
 #include <algorithm>
+#include <vector>
+#include <cstddef>
 
 namespace models {
 
@@ -26,20 +31,15 @@ namespace models {
  * The resulting commanded acceleration vector is then saturated to a
  * maximum magnitude amax_.
  *
- * ### Parameters
- * @param N
- *   Navigation constant (dimensionless). Typical values are in the range
- *   3–5. Larger N increases responsiveness and curvature of the missile
- *   trajectory toward the target.
- *
- * @param amax
- *   Maximum allowed magnitude of the commanded acceleration. Used to
- *   saturate the output to represent missile g-limits or actuator limits.
+ * Assumes a 3-DoF state layout:
+ *   x[0..2] : position (px, py, pz)
+ *   x[3..5] : velocity (vx, vy, vz)
  */
 class ProNav : public sim::IGuidance
 {
 public:
-    explicit ProNav(double N = 3.0, double amax = 100.0) : N_(N), amax_(amax) {}
+    explicit ProNav(double N = 3.0, double amax = 100.0)
+        : N_(N), amax_(amax) {}
 
     /**
      * @brief Compute a ProNav guidance acceleration command.
@@ -48,11 +48,23 @@ public:
      * @param t  Current target state.
      * @return   Desired specific acceleration vector [ax, ay, az] in the
      *           simulation frame, saturated to have norm <= amax_.
+     *           Returns a zero vector if range is too small.
      */
-    std::vector<double>computeGuidanceCommand(const sim::State& m, const sim::State& t) override;
+    [[nodiscard]] std::vector<double> computeGuidanceCommand(
+        const sim::State& m,
+        const sim::State& t) override;
+
 private:
-    double N_;     // Navigation constant (ProNav gain).
-    double amax_;  // Maximum allowed acceleration magnitude (saturation limit).
+    // Indices into the 3-DoF state vector.
+    static constexpr std::size_t PX_IDX = 0;
+    static constexpr std::size_t PY_IDX = 1;
+    static constexpr std::size_t PZ_IDX = 2;
+    static constexpr std::size_t VX_IDX = 3;
+    static constexpr std::size_t VY_IDX = 4;
+    static constexpr std::size_t VZ_IDX = 5;
+
+    double N_;     ///< Navigation constant (ProNav gain).
+    double amax_;  ///< Maximum allowed acceleration magnitude (saturation limit).
 };
 
 } // namespace models

@@ -7,11 +7,26 @@
 
 namespace sim {
 
+/**
+ * @brief Aggregate of aerodynamic and propulsive forces and moments.
+ *
+ * All quantities are expressed in the simulation frame used by the model
+ * (currently world coordinates for the 3-DoF point-mass model).
+ *
+ * For the current 3-DoF implementation, only translational forces are used.
+ * Moments are reserved for future 6-DoF models and may remain zero.
+ */
 struct AeroForces {
-    std::array<double, 3> force{0.0, 0.0, 0.0};
-    std::array<double, 3> moment{0.0, 0.0, 0.0};
+    std::array<double, 3> force{0.0, 0.0, 0.0};   ///< Force components [Fx, Fy, Fz]
+    std::array<double, 3> moment{0.0, 0.0, 0.0};  ///< Moment components [Mx, My, Mz]
 };
 
+/**
+ * @brief Interface for aerodynamic and propulsion models.
+ *
+ * Implementations are responsible for computing forces (and optionally moments)
+ * based on the current state and actuator commands.
+ */
 class IAerodynamics
 {
 public:
@@ -32,11 +47,17 @@ public:
      * In future 6-DoF models, implementations can compute both forces and moments
      * using attitude, angular rates, Mach number, angle-of-attack, etc.
      */
-    virtual AeroForces compute(
-        const State& state, 
+    [[nodiscard]] virtual AeroForces compute(
+        const State& state,
         const std::vector<double>& actuatorCmd) = 0;
 };
 
+/**
+ * @brief Interface for guidance laws.
+ *
+ * A guidance law reads the current missile and target states and outputs a
+ * guidance command (currently a desired specific acceleration vector).
+ */
 class IGuidance
 {
 public:
@@ -51,14 +72,22 @@ public:
      *                      In the current model, this is a desired specific
      *                      acceleration [ax, ay, az] in the simulation frame.
      */
-    virtual std::vector<double> computeGuidanceCommand(const State& s, const State& target) = 0;
+    [[nodiscard]] virtual std::vector<double> computeGuidanceCommand(
+        const State& missileState,
+        const State& targetState) = 0;
 };
 
+/**
+ * @brief Interface for autopilot / control law.
+ *
+ * Converts guidance commands (e.g., desired acceleration) into actuator
+ * commands that are consumed by the aerodynamic model.
+ */
 class IAutopilot
 {
 public:
     virtual ~IAutopilot() = default;
-    
+
     /**
      * @brief Convert a guidance acceleration command into actuator commands.
      *
@@ -71,8 +100,8 @@ public:
      * version of desiredAccel. In a future 6-DoF, a full 3-loop autopilot can
      * implement this same interface with real attitude/rate/actuator dynamics.
      */
-    virtual std::vector<double> computeActuatorCommand(
-        const State& state, 
+    [[nodiscard]] virtual std::vector<double> computeActuatorCommand(
+        const State& state,
         const std::vector<double>& desiredAccel) = 0;
 };
 

@@ -20,16 +20,32 @@ function(enable_sanitizers target)
   endif()
 endfunction()
 
-# -------------------------------
-# Third-party: JSON
-# -------------------------------
 include(FetchContent)
-FetchContent_Declare(
-  nlohmann_json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG        v3.11.3
-)
-FetchContent_MakeAvailable(nlohmann_json)
+
+# -------------------------------
+# Third-party: nlohmann_json
+# -------------------------------
+set(SAM_THIRD_PARTY_DIR "${PROJECT_SOURCE_DIR}/third_party")
+
+option(SAM_USE_SYSTEM_NLOHMANN_JSON
+       "Use system / package-manager nlohmann_json if available"
+       ON)
+
+set(SAM_NLOHMANN_JSON_INCLUDE_DIR "")
+set(SAM_NLOHMANN_JSON_TARGET "")
+
+if(SAM_USE_SYSTEM_NLOHMANN_JSON)
+  # Try a config-mode package (vcpkg / Conan / distro).
+  find_package(nlohmann_json 3.11 QUIET CONFIG)
+endif()
+
+if(nlohmann_json_FOUND)
+  message(STATUS "Using system nlohmann_json")
+  set(SAM_NLOHMANN_JSON_TARGET nlohmann_json::nlohmann_json)
+else()
+  message(STATUS "Using vendored nlohmann_json single-header")
+  set(SAM_NLOHMANN_JSON_INCLUDE_DIR "${SAM_THIRD_PARTY_DIR}/nlohmann")
+endif()
 
 # -------------------------------
 # Source layout
@@ -47,6 +63,10 @@ list(FILTER SAM_CORE_SRC EXCLUDE REGEX ".*/src/vis/.*")
 # Viewer sources only
 file(GLOB_RECURSE SAM_VIS_SRC
   "${PROJECT_SOURCE_DIR}/src/vis/*.cpp"
+  "${PROJECT_SOURCE_DIR}/src/vis/entities/*.cpp"
+  "${PROJECT_SOURCE_DIR}/src/vis/models/*.cpp"
+  "${PROJECT_SOURCE_DIR}/src/vis/shaders/*.cpp"
+  "${PROJECT_SOURCE_DIR}/third_party/stb_image/stb_image.cpp"
 )
 
 # -------------------------------
@@ -56,19 +76,25 @@ add_executable(sam_sim_headless
   ${SAM_CORE_SRC}
   # main.cpp is part of src/, already in SAM_CORE_SRC
 )
+
 target_include_directories(sam_sim_headless PRIVATE
   ${PROJECT_SOURCE_DIR}/include
+  ${SAM_NLOHMANN_JSON_INCLUDE_DIR}
 )
-target_link_libraries(sam_sim_headless PRIVATE
-  nlohmann_json::nlohmann_json
-)
+
+if(SAM_NLOHMANN_JSON_TARGET)
+  target_link_libraries(sam_sim_headless PRIVATE
+    ${SAM_NLOHMANN_JSON_TARGET}
+  )
+endif()
+
 # (No APP_WITH_VIEWER macro; code will run headless fast path)
 enable_sanitizers(sam_sim_headless)
 
 # -------------------------------
 # Interactive binary (with viewer)
 # -------------------------------
-# GL deps
+# GL deps (GLFW via FetchContent)
 FetchContent_Declare(
   glfw
   GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -93,6 +119,7 @@ endif()
 
 find_package(OpenGL REQUIRED)
 
+# glad (vendored)
 add_library(glad STATIC
   ${PROJECT_SOURCE_DIR}/third_party/glad/src/glad.c
 )
@@ -109,19 +136,30 @@ add_executable(sam_sim
   ${SAM_CORE_SRC}
   ${SAM_VIS_SRC}
 )
+
 target_include_directories(sam_sim PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/third_party/glad/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb_image
+  ${SAM_NLOHMANN_JSON_INCLUDE_DIR}
 )
+
 target_compile_definitions(sam_sim PRIVATE APP_WITH_VIEWER=1)
 
+if(SAM_NLOHMANN_JSON_TARGET)
+  target_link_libraries(sam_sim PRIVATE
+    ${SAM_NLOHMANN_JSON_TARGET}
+  )
+endif()
+
 target_link_libraries(sam_sim PRIVATE
-  nlohmann_json::nlohmann_json
   glad
   glfw
   OpenGL::GL
 )
+
 if(UNIX AND NOT APPLE)
   target_link_libraries(sam_sim PRIVATE dl pthread)
 endif()
+
 enable_sanitizers(sam_sim)
