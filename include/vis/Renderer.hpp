@@ -109,6 +109,11 @@ private:
     Camera                         cam_;
     std::unique_ptr<LineShader>    lineShader_;
 
+    // Follow camera state
+    bool followEnabled_ = true;       // start in follow mode
+    bool fPrevDown_     = false;      // edge detection for the 'F' key
+    void updateFollowToggle_();
+
     // Static line geometry.
     GLuint vao_grid_{0}, vbo_grid_{0};
     GLuint vao_axes_{0}, vbo_axes_{0};

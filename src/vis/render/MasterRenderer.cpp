@@ -27,16 +27,8 @@ void MasterRenderer::processEntity(Entity& e)
 void MasterRenderer::prepare()
 {
     glEnable(GL_DEPTH_TEST);
-
-    // We set the sky color here. The actual clear happens in Renderer::beginFrame(),
-    // which currently also sets glClearColor and glClear(). If you'd prefer
-    // MasterRenderer to own clearing entirely, you can:
-    //
-    //   - move glClearColor + glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    //     here, and
-    //   - remove them from Renderer::beginFrame().
-    //
     glClearColor(skyColor_.r, skyColor_.g, skyColor_.b, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void MasterRenderer::render(const Light& sun, const Camera& cam)

@@ -175,7 +175,7 @@ bool Renderer::init(const RendererConfig& cfg)
         "../res/shaders/entity.vert",
         "../res/shaders/entity.frag"
     );
-    master_->setSkyColor(glm::vec3(0.08f, 0.09f, 0.10f));
+    master_->setSkyColor(glm::vec3(0.35f, 0.55f, 0.9f));
 
     try {
         RawModel missileRaw = OBJLoader::loadObjModel("tree", loader_);
@@ -220,9 +220,6 @@ bool Renderer::beginFrame()
     glfwGetFramebufferSize(window_, &fbw_, &fbh_);
     glViewport(0, 0, fbw_, fbh_);
 
-    // Clear to dark gray.
-    glClearColor(0.08f, 0.09f, 0.10f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     return true;
 }
 
@@ -243,17 +240,17 @@ void Renderer::drawScene()
     // Update telemetry first so last_m_ / last_t_ are fresh.
     drainBus_();
 
+    updateFollowToggle_();
+
+    // Choose camera target based on mode
+    if (followEnabled_) {
+        cam_.setTarget(last_m_);
+    }
+
     // Entity-based rendering: missile, ground, etc.
     if (master_) {
         // Use last_m_ as missile world position.
         missileEntity_.position = last_m_;
-        // (Orientation from velocity can be added later.)
-
-        // Optionally: process ground entity if it has a model.
-        // if (groundEntity_.model) {
-        //     master_->processEntity(groundEntity_);
-        // }
-
         master_->processEntity(missileEntity_);
         master_->render(sun_, cam_);
     }
@@ -288,7 +285,7 @@ void Renderer::drawScene()
     drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {0.0f, 1.0f, 0.0f});
     drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_, {1.0f, 0.0f, 0.0f});
 
-    drawMarkerCross_(last_m_, 20.f, {0.0f, 1.0f, 0.0f});
+    //drawMarkerCross_(last_m_, 20.f, {0.0f, 1.0f, 0.0f});
     drawMarkerCross_(last_t_, 60.f, {1.0f, 0.0f, 0.0f});
 
     lineShader_->stop();
@@ -364,8 +361,8 @@ void Renderer::shutdown()
 void Renderer::initGridAxes_()
 {
     // Grid (2 km x 2 km, 10 m spacing).
-    const int   half = 100;   // 100 * 10 m each side => 2 km span.
-    const float step = 10.f;  // 10 meters.
+    const int   half = 1000;   // 100 * 10 m each side => 2 km span.
+    const float step = 500.f;  // 10 meters.
     std::vector<glm::vec3> grid;
     grid.reserve((half * 2 + 1) * 4);
 
@@ -535,6 +532,16 @@ void Renderer::drawMarkerCross_(const glm::vec3& p,
     glBindVertexArray(0);
     glDeleteBuffers(1, &vbo);
     glDeleteVertexArrays(1, &vao);
+}
+
+void Renderer::updateFollowToggle_() 
+{
+    const int cur   = glfwGetKey(window_, GLFW_KEY_F);
+    const bool down = (cur == GLFW_PRESS);
+    if (down && !fPrevDown_) {
+        followEnabled_ = !followEnabled_;
+    }
+    fPrevDown_ = down;
 }
 
 } // namespace vis
