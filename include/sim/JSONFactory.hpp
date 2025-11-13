@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "sim/Missile.hpp"
+#include "geo/GeoTypes.hpp"
+#include "geo/GeoUtils.hpp"
 
 namespace sim {
 
@@ -33,6 +35,9 @@ struct FactoryParams {
 
     /// Fixed time step [s].
     double h{0.01};
+
+    /// Earth-anchored local ENU origin
+    geo::GeoOrigin origin;
 };
 
 /**

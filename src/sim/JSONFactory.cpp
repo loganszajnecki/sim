@@ -4,6 +4,8 @@
 #include "sim/models/SimpleAccelAutopilot.hpp"
 #include "sim/models/ProNav.hpp"
 
+#include "geo/GeoTypes.hpp"
+
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -66,12 +68,31 @@ bool load_from_json(const std::string& path,
     out.tf = j.value("tf", 60.0);
     out.h  = j.value("h",  0.01);
 
+    // -------------------------------------------------------------------------
+    // Geo origin (Earth-anchored frame).
+    // -------------------------------------------------------------------------
+    {
+        geo::GeoLLA originLLA;
+        if (j.contains("geo_origin")) {
+            const auto& go = j["geo_origin"];
+            originLLA.lat_deg = go.value("lat_deg", 0.0);
+            originLLA.lon_deg = go.value("lon_deg", 0.0);
+            originLLA.alt_m   = go.value("alt_m",   0.0);
+        } else {
+            originLLA.lat_deg = 0.0;
+            originLLA.lon_deg = 0.0;
+            originLLA.alt_m   = 0.0;
+        }
+
+        out.origin = geo::makeOrigin(originLLA);
+    }
+
     // Ensure initial states are correctly sized for the current model.
     out.missile0 = State(Missile::Indices::Size);
     out.target0  = State(Missile::Indices::Size);
 
     // -------------------------------------------------------------------------
-    // Initial missile state.
+    // Initial missile state (in local ENU coordinates).
     // -------------------------------------------------------------------------
     if (j.contains("initial_state")) {
         const auto& is = j["initial_state"];
@@ -88,7 +109,7 @@ bool load_from_json(const std::string& path,
     }
 
     // -------------------------------------------------------------------------
-    // Initial target state.
+    // Initial target state (also in local ENU).
     // -------------------------------------------------------------------------
     if (j.contains("target")) {
         const auto& ts = j["target"];

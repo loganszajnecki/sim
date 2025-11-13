@@ -21,6 +21,8 @@ Application::Application(ApplicationOptions opts)
     }
     scenario_ = std::move(sc);
 
+    csv_.setOrigin(&scenario_.params.origin);
+
     printScenarioSummary(opts_.config_path, scenario_);
 
     // Configure simulation engine with missile, target, and intercept radius.
