@@ -25,6 +25,10 @@ Application::Application(ApplicationOptions opts)
 
     csv_.setOrigin(&scenario_.params.origin);
 
+    #ifdef APP_WITH_VIEWER
+        viewer_.setGeoOrigin(&scenario_.params.origin);
+    #endif
+
     printScenarioSummary(opts_.config_path, scenario_);
 
     // Configure simulation engine with missile, target, and intercept radius.

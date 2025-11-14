@@ -119,6 +119,35 @@ public:
         pitch_ = std::clamp(pitch, -pitch_limit_, pitch_limit_);
     }
 
+    // Keep the camera eye outside a sphere (e.g., the Earth),
+    // while preserving the current target and view direction as much as possible.
+    void ensureOutsideSphere(const glm::vec3& sphereCenter,
+                             float sphereRadius,
+                             float margin = 10.0f) // margin in world units
+    {
+        // Current forward direction and eye position.
+        const glm::vec3 dir = forwardFromYawPitch();
+        const glm::vec3 eye = target_ - dir * radius_;
+
+        const glm::vec3 rel  = eye - sphereCenter;
+        const float dist     = glm::length(rel);
+        const float minDist  = sphereRadius + margin;
+
+        // If we're already outside, nothing to do.
+        if (dist >= minDist || dist < 1e-4f) {
+            return;
+        }
+
+        // Push eye out along the radial direction from the sphere center.
+        const glm::vec3 newRel = rel * (minDist / dist);
+        const glm::vec3 newEye = sphereCenter + newRel;
+
+        // Recompute radius so that we still look at the same target.
+        const float newRadius = glm::length(target_ - newEye);
+
+        radius_ = std::clamp(newRadius, 0.01f, max_radius_);
+    }
+
 private:
     float aspect() const {
         return (height_ > 0) ? float(width_) / float(height_) : 16.f / 9.f;

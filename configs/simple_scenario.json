@@ -8,16 +8,15 @@
         "autopilot": { "type": "SimpleAccel", "gain": 1.0, "maxCmd": 100.0 }
     },
     "initial_state": {
-        "pos": [0, 0, 0],
-        "vel": [200, 50, 10]
+    "pos": [0, 0, 0],
+    "vel": [800, 0, 0]
     },
     "target": {
-        "pos": [2000, 0, 1000],
-        "vel": [-50, 0, 0]
+        "pos": [20000, 0, 0],
+        "vel": [-200, 0, 0]
     },
-    "geo_origin": {
-        "lat_deg": 34.1234,
-        "lon_deg": -117.5678,
-        "alt_m": 900.0
-    }
+    "geo_origin": { 
+        "lat_deg": 40.4637, 
+        "lon_deg": -3.7492, 
+        "alt_m": 0.0 }
 }

@@ -12,6 +12,9 @@
 #include "vis/models/RawModel.hpp"
 #include "vis/models/ModelTexture.hpp"
 
+#include "geo/GeoTypes.hpp"
+#include "geo/GeoUtils.hpp"
+
 namespace {
 
 // GLFW error callback for easy debugging.
@@ -23,6 +26,8 @@ void glfw_error_callback(int code, const char* desc) {
 void framebuffer_size_callback(GLFWwindow*, int w, int h) {
     glViewport(0, 0, w, h);
 }
+
+constexpr double EARTH_RADIUS_M = 6378137.0;
 
 } // anonymous namespace
 
@@ -164,9 +169,9 @@ bool Renderer::init(const RendererConfig& cfg)
     // --------------------------------------------------------
     // Entity-based rendering setup (MasterRenderer + missile).
     // --------------------------------------------------------
-
+    constexpr float EARTH_RADIUS_VIS = 10000.0f; // visual radius, not physical km
     // Simple far-away sun light.
-    sun_.position = glm::vec3(20000.0f, 20000.0f, 20000.0f);
+    sun_.position = glm::vec3(EARTH_RADIUS_VIS*3.0f, EARTH_RADIUS_VIS*3.0f, EARTH_RADIUS_VIS*3.0f);
     sun_.color    = glm::vec3(1.0f, 1.0f, 1.0f);
 
     // Create the master renderer using the current camera projection.
@@ -178,10 +183,10 @@ bool Renderer::init(const RendererConfig& cfg)
     master_->setSkyColor(glm::vec3(0.35f, 0.55f, 0.9f));
 
     try {
-        RawModel missileRaw = OBJLoader::loadObjModel("earth", loader_);
+        RawModel missileRaw = OBJLoader::loadObjModel("tree", loader_);
 
         ModelTexture missileTex{};
-        missileTex.id             = loader_.loadTexture("8k_earth_daymap");
+        missileTex.id             = loader_.loadTexture("tree");
         missileTex.shineDamper    = 10.0f;
         missileTex.reflectivity   = 0.9f;
         missileTex.hasTransparency= false;
@@ -198,6 +203,56 @@ bool Renderer::init(const RendererConfig& cfg)
         missileEntity_.position = glm::vec3(0.0f);
         missileEntity_.rotation = glm::vec3(0.0f);
         missileEntity_.scale    = 1.0f;
+    }
+
+    // --------------------------------------------------------
+    // Earth sphere + launch marker (Phase 2).
+    // --------------------------------------------------------
+    try {
+        // Use your Blender-exported earth.obj + 8k_earth_daymap texture
+        RawModel earthRaw = OBJLoader::loadObjModel("earth", loader_);
+
+        ModelTexture earthTex{};
+        earthTex.id              = loader_.loadTexture("8k_earth_daymap");
+        earthTex.shineDamper     = 10.0f;
+        earthTex.reflectivity    = 0.0f;
+        earthTex.hasTransparency = false;
+        earthTex.useFakeLighting = false;
+
+        earthModel_  = TexturedModel{earthRaw, earthTex};
+        earthEntity_ = Entity(&earthModel_,
+                      glm::vec3(0.0f),
+                      glm::vec3(0.0f),
+                      EARTH_RADIUS_VIS);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[Renderer] Failed to load Earth OBJ/texture: %s\n", e.what());
+        earthEntity_.model    = nullptr;
+        earthEntity_.position = glm::vec3(0.0f);
+        earthEntity_.rotation = glm::vec3(0.0f);
+        earthEntity_.scale    = 1.0f;
+    }
+
+    // Init launch marker entity (position later).
+    launchMarkerEntity_.model    = nullptr;
+    launchMarkerEntity_.position = glm::vec3(0.0f);
+    launchMarkerEntity_.rotation = glm::vec3(0.0f);
+    launchMarkerEntity_.scale    = 1.0f;
+
+    // Compute launch marker position if we know the origin and Earth loaded.
+    if (origin_ && earthEntity_.model) {
+        // Direction from Earth center to origin in ECEF
+        glm::dvec3 ecef = geo::ecefFromLLA(origin_->lla);
+        glm::dvec3 dir  = glm::normalize(ecef);
+
+        // Visual position on sphere
+        glm::vec3 markerPos = glm::vec3(dir) * (EARTH_RADIUS_VIS * 1.01f);
+
+        launchMarkerEntity_.position = markerPos;
+        launchMarkerEntity_.rotation = glm::vec3(0.0f);  // no extra rotation needed
+        launchMarkerEntity_.scale    = 300.0f;
+
+        launchMarkerPos_      = markerPos;
+        haveLaunchMarkerPos_  = true;
     }
 
     // Ground is optional; keep as null unless explicitly loaded.
@@ -233,60 +288,108 @@ void Renderer::drawScene()
     cam_.setViewport(fbw_, fbh_);
     cam_.setProj(60.f, 0.1f, 100000.f);
 
+    // Update telemetry first so last_m_ / last_t_ are fresh ENU positions.
+    drainBus_();
+
+    // Compute globe-space positions for missile/target.
+    const glm::vec3 missileWorld = enuToGlobeVisual_(last_m_);
+    const glm::vec3 targetWorld  = enuToGlobeVisual_(last_t_);
+
+    // Follow toggle (uses current missile position on the globe).
+    updateFollowToggle_();
+    if (followEnabled_) {
+        cam_.setTarget(missileWorld); // follow missile on the globe
+    }
+
+    // Keep the camera outside the Earth sphere.
+    if (earthEnabled_ && earthEntity_.model) {
+        cam_.ensureOutsideSphere(glm::vec3(0.0f), earthRadiusVis_, 50.0f);
+        // margin = 100 units above the visual Earth radius; tweak as needed
+    }
+
+    // Now that camera may have changed, get view/proj/vp.
     const glm::mat4 view = cam_.view();
     const glm::mat4 proj = cam_.proj();
     const glm::mat4 vp   = proj * view;
 
-    // Update telemetry first so last_m_ / last_t_ are fresh.
-    drainBus_();
-
-    updateFollowToggle_();
-
-    // Choose camera target based on mode
-    if (followEnabled_) {
-        cam_.setTarget(last_m_);
+    static std::vector<glm::vec3> trail_m_globe;
+    static std::vector<glm::vec3> trail_t_globe;
+    trail_m_globe.clear();
+    trail_t_globe.clear();
+    trail_m_globe.reserve(trail_m_.size());
+    trail_t_globe.reserve(trail_t_.size());
+    for (const auto& p : trail_m_) {
+        trail_m_globe.push_back(enuToGlobeVisual_(p));
     }
-
-    // Entity-based rendering: missile, ground, etc.
+    for (const auto& p : trail_t_) {
+        trail_t_globe.push_back(enuToGlobeVisual_(p));
+    }
+    // --------------------------------------------------------
+    // Entity-based rendering: Earth, launch marker, missile, ground.
+    // --------------------------------------------------------
     if (master_) {
-        // Use last_m_ as missile world position.
-        missileEntity_.position = last_m_;
-        master_->processEntity(missileEntity_);
+        if (earthEnabled_ && earthEntity_.model) {
+            master_->processEntity(earthEntity_);
+        }
+
+        if (earthEnabled_ && launchMarkerEntity_.model) {
+            master_->processEntity(launchMarkerEntity_);
+        }
+
+        if (missileEntity_.model) {
+            missileEntity_.position = missileWorld;
+            master_->processEntity(missileEntity_);
+        }
+
+        if (groundEntity_.model) {
+            master_->processEntity(groundEntity_);
+        }
+
         master_->render(sun_, cam_);
     }
 
-    // Line shader for grid / axes / trails / markers.
+    // --------------------------------------------------------
+    // Line shader for axes / trails / markers.
+    // --------------------------------------------------------
     lineShader_->start();
     lineShader_->loadVP(vp);
 
-    // Grid.
-    // if (vao_grid_ != 0 && count_grid_ > 0) {
-    //     lineShader_->loadColor(glm::vec3(0.35f, 0.37f, 0.40f));
-    //     glBindVertexArray(vao_grid_);
-    //     glDrawArrays(GL_LINES, 0, count_grid_);
+    // Grid disabled for now in globe view.
+    // if (vao_grid_ != 0 && count_grid_ > 0) { ... }
+
+    // Axes (RGB) at origin.
+    // if (vao_axes_ != 0 && count_axes_ > 0) {
+    //     glBindVertexArray(vao_axes_);
+    //     // X (red).
+    //     lineShader_->loadColor(glm::vec3(0.9f, 0.2f, 0.2f));
+    //     glDrawArrays(GL_LINES, 0, 2);
+    //     // Y (green).
+    //     lineShader_->loadColor(glm::vec3(0.2f, 0.9f, 0.2f));
+    //     glDrawArrays(GL_LINES, 2, 2);
+    //     // Z (blue).
+    //     lineShader_->loadColor(glm::vec3(0.2f, 0.4f, 0.9f));
+    //     glDrawArrays(GL_LINES, 4, 2);
     // }
+    // glBindVertexArray(0);
 
-    // Axes (RGB).
-    if (vao_axes_ != 0 && count_axes_ > 0) {
-        glBindVertexArray(vao_axes_);
-        // X (red).
-        lineShader_->loadColor(glm::vec3(0.9f, 0.2f, 0.2f));
-        glDrawArrays(GL_LINES, 0, 2);
-        // Y (green).
-        lineShader_->loadColor(glm::vec3(0.2f, 0.9f, 0.2f));
-        glDrawArrays(GL_LINES, 2, 2);
-        // Z (blue).
-        lineShader_->loadColor(glm::vec3(0.2f, 0.4f, 0.9f));
-        glDrawArrays(GL_LINES, 4, 2);
+    // Trails are still in ENU for now.
+    // drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {0.0f, 1.0f, 0.0f});
+    // drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_, {1.0f, 0.0f, 0.0f});
+    drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_globe, {0.0f, 1.0f, 0.0f});
+    drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_globe, {1.0f, 0.0f, 0.0f});
+
+
+    // Optional: missile marker on globe
+    drawMarkerCross_(missileWorld, 20.f, {0.0f, 1.0f, 0.0f});
+
+    // Target marker on globe (only once).
+    drawMarkerCross_(targetWorld, 60.f, {1.0f, 0.0f, 0.0f});
+
+    // Launch site marker on globe.
+    if (earthEnabled_ && haveLaunchMarkerPos_) {
+        drawMarkerCross_(launchMarkerPos_, 500.0f,
+                         glm::vec3(1.0f, 1.0f, 0.0f));
     }
-    glBindVertexArray(0);
-
-    // Trails + markers.
-    drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {0.0f, 1.0f, 0.0f});
-    drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_, {1.0f, 0.0f, 0.0f});
-
-    //drawMarkerCross_(last_m_, 20.f, {0.0f, 1.0f, 0.0f});
-    drawMarkerCross_(last_t_, 60.f, {1.0f, 0.0f, 0.0f});
 
     lineShader_->stop();
 }
@@ -534,6 +637,32 @@ void Renderer::drawMarkerCross_(const glm::vec3& p,
     glDeleteVertexArrays(1, &vao);
 }
 
+glm::vec3 Renderer::enuToGlobeVisual_(const glm::vec3& enuLocal) const
+{
+    // If we don't have a geo origin or Earth model, just return ENU as-is.
+    if (!origin_ || !earthEntity_.model) {
+        return enuLocal;
+    }
+    // TODO: When local terrain patch is in place, revisit this mapping
+    //       (use true altitude locally, and only use this for far/overview view).
+    // NOTE: This is a visualization-only mapping:
+    //  - We exaggerate horizontal ENU displacement to make motion visible on the globe.
+    //  - We ignore altitude (enuLocal.z) and always place points on the visual Earth surface.
+    constexpr double ENU_VISUAL_SCALE = 200.0; // tweak for debug visibility
+
+    glm::dvec3 enuScaled = glm::dvec3(enuLocal) * ENU_VISUAL_SCALE;
+
+    // ENU (local) -> ECEF (meters)
+    glm::dvec3 ecef = origin_->ecef + origin_->enu_to_ecef * enuScaled;
+
+    // Direction from Earth center.
+    glm::vec3 dir = glm::normalize(glm::vec3(ecef));
+
+    // Place on the Earth surface (fixed visual radius).
+    return dir * earthRadiusVis_;
+}
+
+
 void Renderer::updateFollowToggle_() 
 {
     const int cur   = glfwGetKey(window_, GLFW_KEY_F);
@@ -543,5 +672,11 @@ void Renderer::updateFollowToggle_()
     }
     fPrevDown_ = down;
 }
+
+void Renderer::setGeoOrigin(const geo::GeoOrigin* origin)
+{
+    origin_ = origin;
+}
+
 
 } // namespace vis

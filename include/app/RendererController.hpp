@@ -113,6 +113,8 @@ public:
     /// Access to the underlying telemetry bus (e.g. for HUD overlays).
     vis::TelemetryBus& bus() { return bus_; }
 
+    void setGeoOrigin(const geo::GeoOrigin* origin) { renderer_.setGeoOrigin(origin); }
+
 private:
     void safeShutdown()
     {

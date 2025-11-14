@@ -21,6 +21,8 @@ struct GLFWwindow;
 #include "vis/OBJLoader.hpp"
 #include "vis/shaders/LineShader.hpp"
 
+#include "geo/GeoTypes.hpp"
+
 namespace vis {
 
 /**
@@ -87,6 +89,8 @@ public:
     /// Attach a non-owning telemetry bus pointer (must outlive this renderer).
     void attachBus(TelemetryBus* bus) { bus_ = bus; }
 
+    // Tell the renderer what Earth origin to use
+    void setGeoOrigin(const geo::GeoOrigin* origin);
 private:
     void initGridAxes_();
     void initDynamicVBOs_();
@@ -151,6 +155,19 @@ private:
 
     Light  sun_;
     Loader loader_;
+
+    // Phase 2 geodetic: earth model
+    const geo::GeoOrigin* origin_ = nullptr; // ENU origin / launch site
+    TexturedModel earthModel_{};
+    Entity        earthEntity_{};
+    Entity        launchMarkerEntity_{};
+    bool          earthEnabled_ = true;
+    float earthRadiusVis_ = 10000.0f;
+    glm::vec3 enuToGlobeVisual_(const glm::vec3& enuLocal) const;
+
+    // debug
+    glm::vec3 launchMarkerPos_{0.0f, 0.0f, 0.0f};
+    bool      haveLaunchMarkerPos_{false};
 };
 
 } // namespace vis
