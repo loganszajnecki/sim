@@ -162,12 +162,18 @@ private:
     Entity        earthEntity_{};
     Entity        launchMarkerEntity_{};
     bool          earthEnabled_ = true;
-    float earthRadiusVis_ = 10000.0f;
     glm::vec3 enuToGlobeVisual_(const glm::vec3& enuLocal) const;
 
     // debug
     glm::vec3 launchMarkerPos_{0.0f, 0.0f, 0.0f};
     bool      haveLaunchMarkerPos_{false};
+
+    RawModel      terrainRaw_;
+    TexturedModel terrainModel_;
+    Entity        terrainEntity_;
+    bool          terrainEnabled_ = false;
+    float earthWorldRadius_ = 10000.0f;
+    void initTerrainPatch_();
 };
 
 } // namespace vis

@@ -6,8 +6,15 @@
 #include <stdexcept>
 #include <vector>
 #include <filesystem>
+#include <unordered_map>
 
 #include <glm/glm.hpp>
+
+namespace {
+
+std::unordered_map<std::string, float> g_modelRadii;
+
+}
 
 namespace vis {
 
@@ -142,6 +149,15 @@ RawModel OBJLoader::loadObjModel(const std::string& fileName,
         }
     }
 
+    // Compute model-space radius for spherical meshes
+    float maxR2 = 0.0f;
+    for (const auto& v : vertices) {
+        float r2 = glm::dot(v, v);
+        if (r2 > maxR2) maxR2 = r2;
+    }
+    float modelRadius = std::sqrt(maxR2);
+    g_modelRadii[fileName] = modelRadius;
+
     // Flatten vertex positions
     std::vector<float> posArray(vertices.size() * 3);
     for (size_t i = 0; i < vertices.size(); ++i) {
@@ -158,6 +174,15 @@ RawModel OBJLoader::loadObjModel(const std::string& fileName,
                             normArray,   // may be empty if no vn
                             indices);
 
+}
+
+float OBJLoader::getModelRadius(const std::string& fileName)
+{
+    auto it = g_modelRadii.find(fileName);
+    if (it == g_modelRadii.end()) {
+        return 1.0f;
+    }
+    return it->second;
 }
 
 

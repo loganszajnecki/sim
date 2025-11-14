@@ -11,6 +11,8 @@ public:
     // Loads "res/<fileName>.obj"
     static RawModel loadObjModel(const std::string& fileName,
                                  Loader& loader);
+
+    static float getModelRadius(const std::string& fileName);
 };
 
 } // namespace vis

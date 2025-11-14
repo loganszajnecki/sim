@@ -27,7 +27,7 @@ void framebuffer_size_callback(GLFWwindow*, int w, int h) {
     glViewport(0, 0, w, h);
 }
 
-constexpr double EARTH_RADIUS_M = 6378137.0;
+static constexpr float kEarthWorldRadius = 10000.0f;
 
 } // anonymous namespace
 
@@ -169,9 +169,8 @@ bool Renderer::init(const RendererConfig& cfg)
     // --------------------------------------------------------
     // Entity-based rendering setup (MasterRenderer + missile).
     // --------------------------------------------------------
-    constexpr float EARTH_RADIUS_VIS = 10000.0f; // visual radius, not physical km
     // Simple far-away sun light.
-    sun_.position = glm::vec3(EARTH_RADIUS_VIS*3.0f, EARTH_RADIUS_VIS*3.0f, EARTH_RADIUS_VIS*3.0f);
+    sun_.position = glm::vec3(kEarthWorldRadius*3.0f, kEarthWorldRadius*3.0f, kEarthWorldRadius*3.0f);
     sun_.color    = glm::vec3(1.0f, 1.0f, 1.0f);
 
     // Create the master renderer using the current camera projection.
@@ -212,6 +211,13 @@ bool Renderer::init(const RendererConfig& cfg)
         // Use your Blender-exported earth.obj + 8k_earth_daymap texture
         RawModel earthRaw = OBJLoader::loadObjModel("earth", loader_);
 
+        // Query the true model-space radius just computed.
+        float earthModelRadius = OBJLoader::getModelRadius("earth");
+
+        // Compute scale so that model radius -> desired world radius.
+        float earthScale = kEarthWorldRadius / earthModelRadius;
+        earthWorldRadius_ = kEarthWorldRadius;
+
         ModelTexture earthTex{};
         earthTex.id              = loader_.loadTexture("8k_earth_daymap");
         earthTex.shineDamper     = 10.0f;
@@ -223,7 +229,7 @@ bool Renderer::init(const RendererConfig& cfg)
         earthEntity_ = Entity(&earthModel_,
                       glm::vec3(0.0f),
                       glm::vec3(0.0f),
-                      EARTH_RADIUS_VIS);
+                      earthScale);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[Renderer] Failed to load Earth OBJ/texture: %s\n", e.what());
         earthEntity_.model    = nullptr;
@@ -245,7 +251,7 @@ bool Renderer::init(const RendererConfig& cfg)
         glm::dvec3 dir  = glm::normalize(ecef);
 
         // Visual position on sphere
-        glm::vec3 markerPos = glm::vec3(dir) * (EARTH_RADIUS_VIS * 1.01f);
+        glm::vec3 markerPos = glm::vec3(dir) * (kEarthWorldRadius * 1.01f);
 
         launchMarkerEntity_.position = markerPos;
         launchMarkerEntity_.rotation = glm::vec3(0.0f);  // no extra rotation needed
@@ -260,6 +266,11 @@ bool Renderer::init(const RendererConfig& cfg)
     groundEntity_.position = glm::vec3(0.0f);
     groundEntity_.rotation = glm::vec3(0.0f);
     groundEntity_.scale    = 1.0f;
+
+    // --------------------------------------------------------
+    // Local terrain patch around the geo origin
+    // --------------------------------------------------------
+    initTerrainPatch_();
 
     initialized_ = true;
     return true;
@@ -303,8 +314,7 @@ void Renderer::drawScene()
 
     // Keep the camera outside the Earth sphere.
     if (earthEnabled_ && earthEntity_.model) {
-        cam_.ensureOutsideSphere(glm::vec3(0.0f), earthRadiusVis_, 50.0f);
-        // margin = 100 units above the visual Earth radius; tweak as needed
+        // cam_.ensureOutsideSphere(glm::vec3(0.0f), earthWorldRadius_, 100.0f);
     }
 
     // Now that camera may have changed, get view/proj/vp.
@@ -332,6 +342,10 @@ void Renderer::drawScene()
             master_->processEntity(earthEntity_);
         }
 
+        if (terrainEnabled_ && terrainEntity_.model) {
+            master_->processEntity(terrainEntity_);
+        }
+
         if (earthEnabled_ && launchMarkerEntity_.model) {
             master_->processEntity(launchMarkerEntity_);
         }
@@ -354,27 +368,6 @@ void Renderer::drawScene()
     lineShader_->start();
     lineShader_->loadVP(vp);
 
-    // Grid disabled for now in globe view.
-    // if (vao_grid_ != 0 && count_grid_ > 0) { ... }
-
-    // Axes (RGB) at origin.
-    // if (vao_axes_ != 0 && count_axes_ > 0) {
-    //     glBindVertexArray(vao_axes_);
-    //     // X (red).
-    //     lineShader_->loadColor(glm::vec3(0.9f, 0.2f, 0.2f));
-    //     glDrawArrays(GL_LINES, 0, 2);
-    //     // Y (green).
-    //     lineShader_->loadColor(glm::vec3(0.2f, 0.9f, 0.2f));
-    //     glDrawArrays(GL_LINES, 2, 2);
-    //     // Z (blue).
-    //     lineShader_->loadColor(glm::vec3(0.2f, 0.4f, 0.9f));
-    //     glDrawArrays(GL_LINES, 4, 2);
-    // }
-    // glBindVertexArray(0);
-
-    // Trails are still in ENU for now.
-    // drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_, {0.0f, 1.0f, 0.0f});
-    // drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_, {1.0f, 0.0f, 0.0f});
     drawTrail_(vao_trail_m_, vbo_trail_m_, trail_m_globe, {0.0f, 1.0f, 0.0f});
     drawTrail_(vao_trail_t_, vbo_trail_t_, trail_t_globe, {1.0f, 0.0f, 0.0f});
 
@@ -648,7 +641,7 @@ glm::vec3 Renderer::enuToGlobeVisual_(const glm::vec3& enuLocal) const
     // NOTE: This is a visualization-only mapping:
     //  - We exaggerate horizontal ENU displacement to make motion visible on the globe.
     //  - We ignore altitude (enuLocal.z) and always place points on the visual Earth surface.
-    constexpr double ENU_VISUAL_SCALE = 200.0; // tweak for debug visibility
+    constexpr double ENU_VISUAL_SCALE = 1.0; // tweak for debug visibility
 
     glm::dvec3 enuScaled = glm::dvec3(enuLocal) * ENU_VISUAL_SCALE;
 
@@ -658,8 +651,8 @@ glm::vec3 Renderer::enuToGlobeVisual_(const glm::vec3& enuLocal) const
     // Direction from Earth center.
     glm::vec3 dir = glm::normalize(glm::vec3(ecef));
 
-    // Place on the Earth surface (fixed visual radius).
-    return dir * earthRadiusVis_;
+    static constexpr float kObjectsOffset = 0.0f; // missile/cross above patch
+    return dir * (earthWorldRadius_ + kObjectsOffset);
 }
 
 
@@ -671,6 +664,113 @@ void Renderer::updateFollowToggle_()
         followEnabled_ = !followEnabled_;
     }
     fPrevDown_ = down;
+}
+
+void Renderer::initTerrainPatch_() 
+{
+    terrainEnabled_ = false;
+
+    // Need a geo origin and an Earth model to build a patch
+    if (!origin_ || !earthEntity_.model) {
+        return;
+    }
+
+    // Patch settings: size and resolution.
+    const float HALF_SIZE = 50000.0f; // meters in enu
+    const int N = 64;
+
+    const int VERTS_X = N + 1;
+    const int VERTS_Y = N + 1;
+    
+    std::vector<float> positions;
+    std::vector<float> texcoords;
+    std::vector<float> normals;
+    std::vector<unsigned int> indices;
+
+    positions.reserve(VERTS_X * VERTS_Y * 3);
+    texcoords.reserve(VERTS_X * VERTS_Y * 2);
+    normals.reserve(VERTS_X * VERTS_Y * 3);
+    indices.reserve(N * N * 6);
+
+    for (int j = 0; j < VERTS_Y; ++j) {
+        float v     = static_cast<float>(j) / static_cast<float>(N);
+        float yENU  = (v * 2.0f - 1.0f) * HALF_SIZE; // north
+
+        for (int i = 0; i < VERTS_X; ++i) {
+            float u     = static_cast<float>(i) / static_cast<float>(N);
+            float xENU  = (u * 2.0f - 1.0f) * HALF_SIZE; // east
+
+            // Flat patch in ENU at z=0 (we’ll add real height later).
+            glm::dvec3 enu(xENU, yENU, 0.0);
+
+            // ENU -> ECEF using origin basis.
+            glm::dvec3 ecef = origin_->ecef + origin_->enu_to_ecef * enu;
+
+            // Project onto visual Earth sphere.
+            glm::vec3 dir = glm::normalize(glm::vec3(ecef));
+            // tiny visual offset to avoid z-fighting
+            static constexpr float kPatchOffset = 10.0f;
+            glm::vec3 pos = dir * (earthWorldRadius_ + kPatchOffset);
+
+            // Positions.
+            positions.push_back(pos.x);
+            positions.push_back(pos.y);
+            positions.push_back(pos.z);
+
+            // UVs: simple [0,1] over the patch.
+            texcoords.push_back(u);
+            texcoords.push_back(v);
+
+            // Normals ≈ radial from Earth center (good enough for lighting).
+            normals.push_back(dir.x);
+            normals.push_back(dir.y);
+            normals.push_back(dir.z);
+        }
+    }
+
+    // Build indices for a regular grid.
+    for (int j = 0; j < N; ++j) {
+        for (int i = 0; i < N; ++i) {
+            int i0 = j * VERTS_X + i;
+            int i1 = i0 + 1;
+            int i2 = i0 + VERTS_X;
+            int i3 = i2 + 1;
+
+            // New: CCW as seen from *outside* the Earth (faces up/outward).
+            indices.push_back(i0);
+            indices.push_back(i1);
+            indices.push_back(i2);
+
+            indices.push_back(i1);
+            indices.push_back(i3);
+            indices.push_back(i2);
+        }
+    }
+
+    // Upload to GPU
+    terrainRaw_ = loader_.loadToVAO(
+        positions,
+        texcoords,
+        normals,
+        indices
+    );
+    // reuse earth texture for now
+    ModelTexture terrainTex{};
+    terrainTex.id              = loader_.loadTexture("terrain_local"); // make sure this exists
+    terrainTex.shineDamper     = 4.0f;
+    terrainTex.reflectivity    = 0.0f;
+    terrainTex.hasTransparency = false;
+    terrainTex.useFakeLighting = false;
+
+    terrainModel_  = TexturedModel{terrainRaw_, terrainTex};
+    terrainEntity_ = Entity(&terrainModel_,
+                            glm::vec3(0.0f),             // positions already in world
+                            glm::vec3(0.0f, 0.0f, 0.0f),
+                            1.0f);                       // no scaling
+
+    terrainEnabled_ = true;
+
+
 }
 
 void Renderer::setGeoOrigin(const geo::GeoOrigin* origin)
