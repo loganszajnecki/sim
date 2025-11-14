@@ -1,6 +1,6 @@
 // Renderer.cpp
 #include "vis/Renderer.hpp"
-
+#include <iostream>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -178,10 +178,10 @@ bool Renderer::init(const RendererConfig& cfg)
     master_->setSkyColor(glm::vec3(0.35f, 0.55f, 0.9f));
 
     try {
-        RawModel missileRaw = OBJLoader::loadObjModel("tree", loader_);
+        RawModel missileRaw = OBJLoader::loadObjModel("earth", loader_);
 
         ModelTexture missileTex{};
-        missileTex.id             = loader_.loadTexture("tree");
+        missileTex.id             = loader_.loadTexture("8k_earth_daymap");
         missileTex.shineDamper    = 10.0f;
         missileTex.reflectivity   = 0.9f;
         missileTex.hasTransparency= false;
@@ -260,11 +260,11 @@ void Renderer::drawScene()
     lineShader_->loadVP(vp);
 
     // Grid.
-    if (vao_grid_ != 0 && count_grid_ > 0) {
-        lineShader_->loadColor(glm::vec3(0.35f, 0.37f, 0.40f));
-        glBindVertexArray(vao_grid_);
-        glDrawArrays(GL_LINES, 0, count_grid_);
-    }
+    // if (vao_grid_ != 0 && count_grid_ > 0) {
+    //     lineShader_->loadColor(glm::vec3(0.35f, 0.37f, 0.40f));
+    //     glBindVertexArray(vao_grid_);
+    //     glDrawArrays(GL_LINES, 0, count_grid_);
+    // }
 
     // Axes (RGB).
     if (vao_axes_ != 0 && count_axes_ > 0) {

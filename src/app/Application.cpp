@@ -4,6 +4,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <utility>
+#include <chrono>
+#include <cstdio>
 
 namespace app {
 
@@ -64,6 +66,9 @@ int Application::run()
             return runHeadless();
         }
 
+        // Throw away the wall-clock gap spent in viewer_.init()
+        loop_.resetTimeBase();
+
         return runInteractive();
 #else
         // Built without viewer support: always run headless fast mode.
@@ -114,6 +119,13 @@ int Application::runHeadless()
 #ifdef APP_WITH_VIEWER
 int Application::runInteractive()
 {
+    // ------- FPS state -------
+    using Clock = std::chrono::steady_clock;
+    auto lastTime = Clock::now();
+    double fpsTimeAccum = 0.0;
+    int    fpsFrameCount = 0;
+    double currentFPS = 0.0;
+    // -------------------------
     for (;;) {  // Run until user closes the window.
         if (viewer_.shouldClose()) {
             break;
@@ -170,6 +182,20 @@ int Application::runInteractive()
 
         // Always render a frame (even after sim finished).
         viewer_.renderFrame();
+        // ------- FPS update  -------
+        auto now = Clock::now();
+        double frameDt = std::chrono::duration<double>(now - lastTime).count();
+        lastTime = now;
+
+        fpsTimeAccum += frameDt;
+        fpsFrameCount++;
+
+        if (fpsTimeAccum >= 1.0) {
+            currentFPS = fpsFrameCount / fpsTimeAccum;
+            std::cout << "FPS: " << currentFPS << "\n";
+            fpsFrameCount = 0;
+            fpsTimeAccum  = 0.0;
+        }
     }
 
     std::cout << "Simulation finished, telemetry.csv written.\n";

@@ -63,6 +63,13 @@ public:
     /// Reset any accumulated lag so the controller stops trying to catch up.
     void resetLag() { lag_ = 0.0; }
 
+    /// Reset lag and wall-clock baseline.
+    void resetTimeBase()
+    {
+        lastWall_ = Clock::now();
+        lag_      = 0.0;
+    }
+
     /// Set the fixed time step [s].
     void setStep(double h) { h_ = h; }
 
