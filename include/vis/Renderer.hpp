@@ -40,6 +40,29 @@ struct RendererConfig {
 };
 
 /**
+ * @brief View modes for camera state machine
+ */
+enum class ViewMode {
+    Globe,
+    Local
+};
+
+/**
+ * @brief Parameters for transitioning from Globe<->Local
+ */
+struct ViewTransition {
+    bool active           = false;
+    ViewMode from         = ViewMode::Globe;
+    ViewMode to           = ViewMode::Local;
+    float t               = 0.0f;       // elapsed time (seconds)
+    float duration        = 2.0f;       // total transition time (seconds)
+    glm::vec3 posStart    = glm::vec3(0.0f);
+    glm::vec3 posEnd      = glm::vec3(0.0f);
+    glm::vec3 targetStart = glm::vec3(0.0f);
+    glm::vec3 targetEnd   = glm::vec3(0.0f);
+};
+
+/**
  * @brief Viewer + rendering engine for the SAM visualizer.
  *
  * Responsibilities:
@@ -136,6 +159,17 @@ private:
     const geo::GeoOrigin* origin_ = nullptr; // ENU origin / launch site
 
     WorldScene world_;
+
+    // View mode + smooth transition between global and local views
+    ViewMode        viewMode_{ViewMode::Globe};
+    ViewTransition  viewTrans_;
+    bool vPrevDown_{false};    // edge detect for 'V' key
+    double lastViewTime_{0.0}; // for dt in drawScene
+    void updateViewMode_(double now,
+                         const glm::vec3& missileWorld);
+    void startViewTransition_(ViewMode toMode,
+                              const glm::vec3& missileWorld);
+    void setInitialGlobeView_();
 };
 
 } // namespace vis

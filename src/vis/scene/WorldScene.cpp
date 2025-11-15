@@ -140,7 +140,7 @@ void WorldScene::initTerrainPatch_(Loader& loader,
     }
 
     TerrainPatchConfig cfg;
-    cfg.halfSizeMeters = 50000.0f; // matches your previous HALF_SIZE
+    cfg.halfSizeMeters = 500000.0f; // matches your previous HALF_SIZE
     cfg.resolution     = 64;       // matches previous N
     cfg.patchOffset    = 0.0f;    // small offset above globe
 

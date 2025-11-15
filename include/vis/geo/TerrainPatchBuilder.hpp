@@ -11,7 +11,7 @@ namespace vis {
  * @brief Configuration for a local terrain patch.
  */
 struct TerrainPatchConfig {
-    float halfSizeMeters = 50000.0f;  ///< Half-width in ENU (meters).
+    float halfSizeMeters = 500000.0f;  ///< Half-width in ENU (meters).
     int   resolution      = 64;       ///< Number of quads per side (N).
     float patchOffset     = 0.0f;     ///< Visual offset above the globe radius.
 };

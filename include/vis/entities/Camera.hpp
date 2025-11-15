@@ -16,21 +16,6 @@ namespace vis {
  *  - Orbit: yaw around world Z, pitch around camera right vector.
  *  - Pan: screen-space pan using pixels, scaled with distance & FOV.
  *  - Dolly: exponential zoom in/out using a radius around the target.
- *
- * Typical usage:
- *
- *   Camera cam;
- *   cam.setViewport(width, height);
- *   cam.setProj(60.0f, 0.1f, 100000.0f);
- *
- *   // per-frame input:
- *   cam.orbit(dxPixels, dyPixels);
- *   cam.pan(dxPixels, dyPixels);
- *   cam.dolly(scrollSteps);
- *
- *   // for rendering:
- *   glm::mat4 view = cam.view();
- *   glm::mat4 proj = cam.proj();
  */
 class Camera {
 public:
@@ -48,13 +33,6 @@ public:
 
     /**
      * @brief Orbit the camera around the target in response to mouse drag.
-     *
-     * @param dx_pixels  Horizontal mouse delta in pixels.
-     * @param dy_pixels  Vertical mouse delta in pixels.
-     *
-     * - Yaw is about world Z.
-     * - Pitch is about the camera's right vector.
-     * - Sensitivity is scaled by FOV and viewport height for consistency.
      */
     void orbit(float dx_pixels, float dy_pixels) {
         // Radians per pixel scaled to FOV/viewport height
@@ -68,10 +46,6 @@ public:
 
     /**
      * @brief Pan in screen space (dx, dy in pixels).
-     *
-     * Pixel deltas are converted to world-space offsets proportional to
-     * the current distance to the target and the vertical FOV, so panning
-     * feels roughly consistent across zoom levels.
      */
     void pan(float dx_pixels, float dy_pixels) {
         // Convert pixels to world units roughly proportional to distance & FOV
@@ -88,9 +62,6 @@ public:
 
     /**
      * @brief Exponential dolly: positive scroll_steps zooms in, negative out.
-     *
-     * Typically called with mouse wheel y-offset. Each step scales the
-     * radius (distance to target) by a constant factor.
      */
     void dolly(float scroll_steps) {
         const float scale = std::exp(-scroll_steps * zoom_speed_);
@@ -107,8 +78,48 @@ public:
     /// Projection matrix (set via setProj()).
     glm::mat4 proj() const { return proj_; }
 
-    // Optional helpers if you expose them
-    void setTarget(const glm::vec3& t) { target_ = t; }
+    /// Current camera world-space position (eye).
+    glm::vec3 position() const {
+        const glm::vec3 dir = forwardFromYawPitch();
+        return target_ - dir * radius_;
+    }
+
+    /// Current camera target point.
+    const glm::vec3& target() const noexcept { return target_; }
+
+    /// Set camera target point.
+    void setTarget(const glm::vec3& t) {
+        target_ = t;
+        // view() is recomputed on demand from yaw/pitch/radius/target.
+    }
+
+    /// Set camera world-space position, keeping the camera looking at current target.
+    void setPosition(const glm::vec3& eye) {
+        glm::vec3 toTarget = target_ - eye;
+        float dist = glm::length(toTarget);
+        if (dist < 1e-4f) {
+            return; // degenerate; ignore
+        }
+
+        radius_ = std::clamp(dist, 0.01f, max_radius_);
+
+        glm::vec3 dir = glm::normalize(toTarget);
+
+        // For Z-up: dir = (cp*cy, cp*sy, sp)
+        // pitch = asin(z), yaw = atan2(y, x)
+        float sp = dir.z;
+        sp = std::clamp(sp, -1.0f, 1.0f);
+        float pitch = std::asin(sp);
+        float cp    = std::cos(pitch);
+
+        float yaw = 0.0f;
+        if (cp > 1e-6f) {
+            yaw = std::atan2(dir.y, dir.x);
+        }
+
+        yaw_   = wrapAngle(yaw);
+        pitch_ = std::clamp(pitch, -pitch_limit_, pitch_limit_);
+    }
 
     /// Set camera distance from target (clamped).
     void setRadius(float r) { radius_ = std::clamp(r, 0.01f, max_radius_); }
