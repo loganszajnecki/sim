@@ -32,7 +32,7 @@ struct ApplicationOptions {
     int maxStepsPerFrame{10};
 
     /// Intercept radius [m] for declaring a hit.
-    double intercept_radius_m{5.0};
+    double intercept_radius_m{500.0};
 };
 
 /**

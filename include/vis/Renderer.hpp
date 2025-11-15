@@ -12,7 +12,11 @@ struct GLFWwindow;
 
 #include "vis/entities/Camera.hpp"
 #include "vis/Telemetry.hpp"
-
+#include "vis/TrailSystem.hpp"
+#include "vis/render/LineRenderer.hpp"
+#include "vis/CameraController.hpp"
+#include "vis/geo/GeoMapper.hpp"
+#include "vis/geo/TerrainPatchBuilder.hpp"
 #include "vis/render/MasterRenderer.hpp"
 #include "vis/models/TexturedModel.hpp"
 #include "vis/entities/Entity.hpp"
@@ -20,7 +24,7 @@ struct GLFWwindow;
 #include "vis/Loader.hpp"
 #include "vis/OBJLoader.hpp"
 #include "vis/shaders/LineShader.hpp"
-
+#include "vis/scene/WorldScene.hpp"
 #include "geo/GeoTypes.hpp"
 
 namespace vis {
@@ -92,31 +96,18 @@ public:
     // Tell the renderer what Earth origin to use
     void setGeoOrigin(const geo::GeoOrigin* origin);
 private:
-    void initGridAxes_();
-    void initDynamicVBOs_();
     void drainBus_();
-    void drawTrail_(GLuint vao,
-                    GLuint vbo,
-                    const std::vector<glm::vec3>& pts,
-                    const glm::vec3& color);
-    void drawMarkerCross_(const glm::vec3& p,
-                          float L,
-                          const glm::vec3& color);
-
+    void setupCallbacks_();
     bool initialized_{false};
 
     GLFWwindow* window_{nullptr};
     int fbw_{0};
     int fbh_{0}; // framebuffer size (for viewport)
 
-    // Camera and line shader.
-    Camera                         cam_;
-    std::unique_ptr<LineShader>    lineShader_;
-
-    // Follow camera state
-    bool followEnabled_ = true;       // start in follow mode
-    bool fPrevDown_     = false;      // edge detection for the 'F' key
-    void updateFollowToggle_();
+    // Camera + line renderer.
+    Camera           cam_;
+    CameraController camController_;
+    LineRenderer     lineRenderer_;
 
     // Static line geometry.
     GLuint vao_grid_{0}, vbo_grid_{0};
@@ -126,54 +117,25 @@ private:
     // Dynamic trails.
     GLuint vao_trail_m_{0}, vbo_trail_m_{0};
     GLuint vao_trail_t_{0}, vbo_trail_t_{0};
-    std::size_t trail_cap_{5000};
 
-    std::vector<glm::vec3> trail_m_;
-    std::vector<glm::vec3> trail_t_;
-    glm::vec3              last_m_{0.f};
-    glm::vec3              last_t_{0.f};
+    // CPU-side trail storage (RAII).
+    TrailSystem trails_{5000};
 
     // Non-owning telemetry queue (owned by RendererController).
     TelemetryBus* bus_{nullptr};
-
-    // Input state.
-    bool   orbiting_{false}; // LMB drag
-    bool   panning_{false};  // MMB drag or Shift+LMB
-    double lastx_{0.0};
-    double lasty_{0.0};
 
     // ----------------------------------------------------------------
     // Entity-based rendering pieces.
     // ----------------------------------------------------------------
     std::unique_ptr<MasterRenderer> master_;
 
-    TexturedModel groundModel_;
-    Entity        groundEntity_;
+    // Geo mapping (ENU -> globe) and Earth/terrain entities.
+    GeoMapper    geoMapper_;
 
-    TexturedModel missileModel_;
-    Entity        missileEntity_;
-
-    Light  sun_;
-    Loader loader_;
-
-    // Phase 2 geodetic: earth model
+    Loader    loader_;
     const geo::GeoOrigin* origin_ = nullptr; // ENU origin / launch site
-    TexturedModel earthModel_{};
-    Entity        earthEntity_{};
-    Entity        launchMarkerEntity_{};
-    bool          earthEnabled_ = true;
-    glm::vec3 enuToGlobeVisual_(const glm::vec3& enuLocal) const;
 
-    // debug
-    glm::vec3 launchMarkerPos_{0.0f, 0.0f, 0.0f};
-    bool      haveLaunchMarkerPos_{false};
-
-    RawModel      terrainRaw_;
-    TexturedModel terrainModel_;
-    Entity        terrainEntity_;
-    bool          terrainEnabled_ = false;
-    float earthWorldRadius_ = 10000.0f;
-    void initTerrainPatch_();
+    WorldScene world_;
 };
 
 } // namespace vis
