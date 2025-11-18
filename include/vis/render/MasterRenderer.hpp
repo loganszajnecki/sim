@@ -28,7 +28,6 @@ namespace vis {
  *
  *   // Per frame:
  *   renderer.processEntity(missileEntity);
- *   renderer.processEntity(groundEntity);
  *   renderer.render(sunLight, cam);
  *
  * Notes:

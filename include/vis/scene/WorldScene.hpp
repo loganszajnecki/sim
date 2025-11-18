@@ -36,7 +36,8 @@ public:
     void updateMissile(const glm::vec3& missileWorld);
 
     /// Submit all visible entities and call MasterRenderer::render.
-    void submit(MasterRenderer& renderer, const Camera& cam);
+    void submitGlobe(MasterRenderer& renderer, const Camera& cam);
+    void submitLocal(MasterRenderer& renderer, const Camera& cam);
 
     /// Debug / line overlay helpers.
     const glm::vec3& launchMarkerPos() const noexcept { return launchMarkerPos_; }
@@ -50,7 +51,6 @@ private:
     void initMissile_(Loader& loader);
     void initEarth_(Loader& loader, GeoMapper& mapper, const geo::GeoOrigin* origin);
     void initLaunchMarker_(const geo::GeoOrigin* origin, GeoMapper& mapper);
-    void initGround_();
     void initTerrainPatch_(Loader& loader,
                            const geo::GeoOrigin* origin,
                            GeoMapper& mapper);
@@ -67,10 +67,6 @@ private:
     // Missile.
     TexturedModel missileModel_{};
     Entity        missileEntity_{};
-
-    // Ground (optional).
-    TexturedModel groundModel_{};
-    Entity        groundEntity_{};
 
     // Local terrain patch.
     RawModel      terrainRaw_{};

@@ -1,4 +1,5 @@
 #include "vis/geo/TerrainPatchBuilder.hpp"
+#include <glm/gtc/constants.hpp>
 
 namespace vis {
 
@@ -15,8 +16,8 @@ void buildTerrainPatchMesh(const geo::GeoOrigin& origin,
     normals.clear();
     indices.clear();
 
-    const int   N         = cfg.resolution;
-    const float HALF_SIZE = cfg.halfSizeMeters;
+    const int   N           = cfg.resolution;
+    const float HALF_SIZE   = cfg.halfSizeMeters;
     const float patchOffset = cfg.patchOffset;
 
     const int VERTS_X = N + 1;
@@ -48,12 +49,21 @@ void buildTerrainPatchMesh(const geo::GeoOrigin& origin,
             positions.push_back(pos.y);
             positions.push_back(pos.z);
 
-            // UVs: simple [0,1] over the patch.
-            texcoords.push_back(u);
-            texcoords.push_back(v);
+            // Direction from Earth center (unit vector).
+            glm::vec3 dir = glm::normalize(pos);
+
+            // Globe-aligned UVs: equirectangular mapping from direction.
+            double lat = std::asin(static_cast<double>(dir.z)); // [-pi/2, pi/2]
+            double lon = std::atan2(static_cast<double>(dir.y),
+                                    static_cast<double>(dir.x)); // [-pi, pi]
+
+            float u_globe = static_cast<float>(lon / (2.0 * glm::pi<double>()) + 0.5);
+            float v_globe = static_cast<float>(lat / glm::pi<double>()         + 0.5);
+
+            texcoords.push_back(u_globe);
+            texcoords.push_back(v_globe);
 
             // Normals ≈ radial from Earth center (good enough for lighting).
-            glm::vec3 dir = glm::normalize(pos); // since pos is already at radius+offset
             normals.push_back(dir.x);
             normals.push_back(dir.y);
             normals.push_back(dir.z);

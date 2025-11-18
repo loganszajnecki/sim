@@ -3,9 +3,6 @@
 
 namespace {
 
-constexpr double kDegToRad = M_PI / 180.0;
-constexpr double kRadToDeg = 180.0 / M_PI;
-
 // WGS-84 ellipsoid constants
 constexpr double kA  = 6378137.0;                 // semi-major axis (m)
 constexpr double kF  = 1.0 / 298.257223563;       // flattening
@@ -13,8 +10,8 @@ constexpr double kE2 = 2.0 * kF - kF * kF;        // first eccentricity^2
 
 inline void latLonToRad(const geo::GeoLLA& lla, double& lat_rad, double& lon_rad)
 {
-    lat_rad = lla.lat_deg * kDegToRad;
-    lon_rad = lla.lon_deg * kDegToRad;
+    lat_rad = glm::radians(lla.lat_deg);
+    lon_rad = glm::radians(lla.lon_deg);
 }
 
 } // namespace
@@ -62,8 +59,8 @@ GeoLLA llaFromECEF(const glm::dvec3& ecef)
     const double alt    = p / std::cos(lat) - N;
 
     GeoLLA out;
-    out.lat_deg = lat * kRadToDeg;
-    out.lon_deg = lon * kRadToDeg;
+    out.lat_deg = glm::radians(lat);
+    out.lon_deg = glm::radians(lon);
     out.alt_m   = alt;
     return out;
 }

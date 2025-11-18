@@ -197,12 +197,32 @@ void Renderer::drawScene()
         trail_t_globe.push_back(geoMapper_.enuToGlobe(p));
     }
 
+    // --------------------------------------------------------------------
+    // Mode-dependent rendering: Globe vs Local.
+    // For now they render the same geometry, but the separation lets us
+    // change Local later (e.g., hide globe, show high-res terrain, etc.).
+    // --------------------------------------------------------------------
+    if (viewMode_ == ViewMode::Globe) {
+        renderGlobeScene_(vp, missileWorld, targetWorld,
+                          trail_m_globe, trail_t_globe);
+    } else {
+        renderLocalScene_(vp, missileWorld, targetWorld,
+                          trail_m_globe, trail_t_globe);
+    }
+}
+
+void Renderer::renderGlobeScene_(const glm::mat4& vp,
+                                 const glm::vec3& missileWorld,
+                                 const glm::vec3& targetWorld,
+                                 const std::vector<glm::vec3>& trailMissile,
+                                 const std::vector<glm::vec3>& trailTarget)
+{
     // --------------------------------------------------------
     // Entity-based rendering: delegate to WorldScene.
     // --------------------------------------------------------
     if (master_) {
         world_.updateMissile(missileWorld);
-        world_.submit(*master_, cam_);
+        world_.submitGlobe(*master_, cam_);
     }
 
     // --------------------------------------------------------
@@ -214,14 +234,14 @@ void Renderer::drawScene()
     lineRenderer_.drawTrail(
         lineRenderer_.missileTrailVAO(),
         lineRenderer_.missileTrailVBO(),
-        trail_m_globe,
+        trailMissile,
         glm::vec3(0.0f, 1.0f, 0.0f)
     );
 
     lineRenderer_.drawTrail(
         lineRenderer_.targetTrailVAO(),
         lineRenderer_.targetTrailVBO(),
-        trail_t_globe,
+        trailTarget,
         glm::vec3(1.0f, 0.0f, 0.0f)
     );
 
@@ -245,6 +265,53 @@ void Renderer::drawScene()
 
     lineRenderer_.end();
 }
+
+void Renderer::renderLocalScene_(const glm::mat4& vp,
+                                 const glm::vec3& missileWorld,
+                                 const glm::vec3& targetWorld,
+                                 const std::vector<glm::vec3>& trailMissile,
+                                 const std::vector<glm::vec3>& trailTarget)
+{
+    // --------------------------------------------------------
+    // Entity-based rendering: local terrain + missile.
+    // --------------------------------------------------------
+    if (master_) {
+        world_.updateMissile(missileWorld);
+        world_.submitLocal(*master_, cam_);
+    }
+
+    // For now, reuse the same globe-space trails & markers.
+    // Later we can switch these to ENU/local-only representations.
+    lineRenderer_.begin(vp);
+
+    lineRenderer_.drawTrail(
+        lineRenderer_.missileTrailVAO(),
+        lineRenderer_.missileTrailVBO(),
+        trailMissile,
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+
+    lineRenderer_.drawTrail(
+        lineRenderer_.targetTrailVAO(),
+        lineRenderer_.targetTrailVBO(),
+        trailTarget,
+        glm::vec3(1.0f, 0.0f, 0.0f)
+    );
+
+    lineRenderer_.drawCross(missileWorld, 1.f, glm::vec3(0.0f, 1.0f, 0.0f));
+    lineRenderer_.drawCross(targetWorld, 1.f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+    if (world_.hasLaunchMarker()) {
+        lineRenderer_.drawCross(
+            world_.launchMarkerPos(),
+            3.0f,
+            glm::vec3(0.0f, 0.0f, 0.0f)
+        );
+    }
+
+    lineRenderer_.end();
+}
+
 
 void Renderer::endFrame()
 {
@@ -402,7 +469,7 @@ void Renderer::startViewTransition_(ViewMode toMode,
         }
 
         // How far above the missile we want to be (in world units).
-        const float backDist = 0.1f * rMiss;   // 50% of radius above surface (tune)
+        const float backDist = 0.001f * rMiss;   // 50% of radius above surface (tune)
 
         // A small lateral offset so the camera isn't exactly nadir.
         const glm::vec3 worldUp(0.0f, 0.0f, 1.0f);
@@ -410,9 +477,8 @@ void Renderer::startViewTransition_(ViewMode toMode,
         if (glm::dot(right, right) < 1e-6f) {
             right = glm::vec3(1.0f, 0.0f, 0.0f);
         }
-        glm::vec3 up = glm::normalize(glm::cross(right, radial));
 
-        const float sideOffset = 0.1f * backDist; // tweak as desired
+        const float sideOffset = 0.1f * backDist;
 
         // Eye is above the missile along the radial, slightly off to the side.
         glm::vec3 eye = radial * (rMiss + backDist) + right * sideOffset;
@@ -557,8 +623,6 @@ void Renderer::setInitialGlobeView_()
     viewTrans_.t       = 0.0f;
     lastViewTime_      = 0.0;
 }
-
-
 
 
 } // namespace vis

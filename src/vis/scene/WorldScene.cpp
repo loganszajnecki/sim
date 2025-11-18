@@ -20,7 +20,6 @@ void WorldScene::init(Loader& loader,
     initSun_();
     initMissile_(loader);
     initEarth_(loader, mapper, origin);
-    initGround_();
 
     if (origin && earthEntity_.model) {
         initLaunchMarker_(origin, mapper);
@@ -30,8 +29,8 @@ void WorldScene::init(Loader& loader,
 
 void WorldScene::initSun_()
 {
-    sun_.position = glm::vec3(kEarthWorldRadius * 3.0f,
-                              kEarthWorldRadius * 3.0f,
+    sun_.position = glm::vec3(-kEarthWorldRadius * 3.0f,
+                              -kEarthWorldRadius * 3.0f,
                               kEarthWorldRadius * 3.0f);
     sun_.color    = glm::vec3(1.0f, 1.0f, 1.0f);
 }
@@ -121,14 +120,6 @@ void WorldScene::initLaunchMarker_(const geo::GeoOrigin* origin,
     haveLaunchMarkerPos_ = true;
 }
 
-void WorldScene::initGround_()
-{
-    groundEntity_.model    = nullptr;
-    groundEntity_.position = glm::vec3(0.0f);
-    groundEntity_.rotation = glm::vec3(0.0f);
-    groundEntity_.scale    = 1.0f;
-}
-
 void WorldScene::initTerrainPatch_(Loader& loader,
                                    const geo::GeoOrigin* origin,
                                    GeoMapper& mapper)
@@ -140,9 +131,9 @@ void WorldScene::initTerrainPatch_(Loader& loader,
     }
 
     TerrainPatchConfig cfg;
-    cfg.halfSizeMeters = 500000.0f; // matches your previous HALF_SIZE
-    cfg.resolution     = 64;       // matches previous N
-    cfg.patchOffset    = 0.0f;    // small offset above globe
+    cfg.halfSizeMeters = 500000.0f;
+    cfg.resolution     = 64;
+    cfg.patchOffset    = 0.0f;
 
     std::vector<float>         positions;
     std::vector<float>         texcoords;
@@ -160,8 +151,8 @@ void WorldScene::initTerrainPatch_(Loader& loader,
     );
 
     ModelTexture terrainTex{};
-    terrainTex.id              = loader.loadTexture("terrain_local");
-    terrainTex.shineDamper     = 4.0f;
+    terrainTex.id              = loader.loadTexture("white");
+    terrainTex.shineDamper     = 2.0f;
     terrainTex.reflectivity    = 0.0f;
     terrainTex.hasTransparency = false;
     terrainTex.useFakeLighting = false;
@@ -183,26 +174,40 @@ void WorldScene::updateMissile(const glm::vec3& missileWorld)
     }
 }
 
-void WorldScene::submit(MasterRenderer& renderer, const Camera& cam)
+void WorldScene::submitGlobe(MasterRenderer& renderer, const Camera& cam)
 {
+    // Earth sphere
     if (earthEnabled_ && earthEntity_.model) {
         renderer.processEntity(earthEntity_);
     }
+
+    // Launch marker sitting on the globe
+    if (hasLaunchMarker() && launchMarkerEntity_.model) {
+        renderer.processEntity(launchMarkerEntity_);
+    }
+
+    // Missile model on the globe
+    if (missileEntity_.model) {
+        renderer.processEntity(missileEntity_);
+    }
+
+    // IMPORTANT: no local terrain patch in globe view
+    // (do NOT process terrainEntity_ here)
+
+    renderer.render(sun_, cam);
+}
+
+void WorldScene::submitLocal(MasterRenderer& renderer, const Camera& cam)
+{
+    // Local view: show local terrain + missile only.
+    // (No Earth sphere – it just gets in the way visually.)
 
     if (terrainEnabled_ && terrainEntity_.model) {
         renderer.processEntity(terrainEntity_);
     }
 
-    if (earthEnabled_ && launchMarkerEntity_.model) {
-        renderer.processEntity(launchMarkerEntity_);
-    }
-
     if (missileEntity_.model) {
         renderer.processEntity(missileEntity_);
-    }
-
-    if (groundEntity_.model) {
-        renderer.processEntity(groundEntity_);
     }
 
     renderer.render(sun_, cam);

@@ -160,7 +160,7 @@ private:
 
     WorldScene world_;
 
-    // View mode + smooth transition between global and local views
+    // --- View mode + smooth transition between global and local views ---
     ViewMode        viewMode_{ViewMode::Globe};
     ViewTransition  viewTrans_;
     bool vPrevDown_{false};    // edge detect for 'V' key
@@ -170,6 +170,18 @@ private:
     void startViewTransition_(ViewMode toMode,
                               const glm::vec3& missileWorld);
     void setInitialGlobeView_();
+
+    void renderGlobeScene_(const glm::mat4& vp,
+                           const glm::vec3& missileWorld,
+                           const glm::vec3& targetWorld,
+                           const std::vector<glm::vec3>& trailMissile,
+                           const std::vector<glm::vec3>& trailTarget);
+
+    void renderLocalScene_(const glm::mat4& vp,
+                           const glm::vec3& missileWorld,
+                           const glm::vec3& targetWorld,
+                           const std::vector<glm::vec3>& trailMissile,
+                           const std::vector<glm::vec3>& trailTarget);
 };
 
 } // namespace vis
