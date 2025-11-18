@@ -131,7 +131,7 @@ void WorldScene::initTerrainPatch_(Loader& loader,
     }
 
     TerrainPatchConfig cfg;
-    cfg.halfSizeMeters = 500000.0f;
+    cfg.halfSizeMeters = 1000000.0f;
     cfg.resolution     = 64;
     cfg.patchOffset    = 0.0f;
 

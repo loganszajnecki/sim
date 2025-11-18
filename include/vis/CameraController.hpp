@@ -40,6 +40,15 @@ public:
 
     bool followEnabled() const noexcept { return followEnabled_; }
 
+    // Enable/disable panning (used by Renderer depending on view mode).
+    void setPanEnabled(bool enabled) { panEnabled_ = enabled; }
+
+    // Allow or disallow follow logic entirely.
+    void setFollowAllowed(bool allowed) { followAllowed_ = allowed; }
+
+    // Force the follow flag on/off (used when switching modes).
+    void forceFollow(bool enabled) { followEnabled_ = enabled; }
+
 private:
     Camera* cam_{nullptr};   // non-owning
 
@@ -50,6 +59,8 @@ private:
 
     bool followEnabled_{true};
     bool fPrevDown_{false};
+    bool panEnabled_{true};    // can we pan at all?
+    bool followAllowed_{true}; // can we even use follow (e.g. only in Local)?
 };
 
 } // namespace vis

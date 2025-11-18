@@ -54,7 +54,7 @@ public:
             / std::max(1, height_);
 
         const glm::vec3 right = rightVector();
-        const glm::vec3 up    = worldUp_; // lock to world up for clean vertical pans
+        const glm::vec3 up    = upAxis_; // lock to world up for clean vertical pans
 
         target_ += (dx_pixels * world_per_px) * right
                  + (dy_pixels * world_per_px) * up;
@@ -105,21 +105,26 @@ public:
 
         glm::vec3 dir = glm::normalize(toTarget);
 
-        // For Z-up: dir = (cp*cy, cp*sy, sp)
-        // pitch = asin(z), yaw = atan2(y, x)
-        float sp = dir.z;
-        sp = std::clamp(sp, -1.0f, 1.0f);
-        float pitch = std::asin(sp);
+        // Pitch: angle between dir and the tangent plane (toward upAxis_).
+        float dotUp = glm::dot(dir, upAxis_);
+        dotUp = std::clamp(dotUp, -1.0f, 1.0f);
+        float pitch = std::asin(dotUp);   // sp = dot(dir, upAxis)
         float cp    = std::cos(pitch);
+
+        // Tangential component of dir in the (baseForward_, baseRight_) plane.
+        glm::vec3 dir_t = dir - upAxis_ * dotUp;
 
         float yaw = 0.0f;
         if (cp > 1e-6f) {
-            yaw = std::atan2(dir.y, dir.x);
+            float x = glm::dot(dir_t, baseForward_);
+            float y = glm::dot(dir_t, baseRight_);
+            yaw = std::atan2(y, x);  // yaw=0 => baseForward_
         }
 
         yaw_   = wrapAngle(yaw);
         pitch_ = std::clamp(pitch, -pitch_limit_, pitch_limit_);
     }
+
 
     /// Set camera distance from target (clamped).
     void setRadius(float r) { radius_ = std::clamp(r, 0.01f, max_radius_); }
@@ -159,6 +164,46 @@ public:
         radius_ = std::clamp(newRadius, 0.01f, max_radius_);
     }
 
+    /// Set the orbit "up" axis for yaw/pitch (must be non-zero).
+    void setOrbitUp(const glm::vec3& up)
+    {
+        // Normalize new up axis, with a sane fallback.
+        glm::vec3 u = glm::normalize(up);
+        if (!std::isfinite(u.x) || !std::isfinite(u.y) || !std::isfinite(u.z)) {
+            u = glm::vec3(0.f, 0.f, 1.f);
+        }
+
+        // Remember the current forward direction in world space
+        // under the OLD basis so we can keep the view stable.
+        glm::vec3 oldForward = forwardFromYawPitch();
+
+        upAxis_ = u;
+
+        // Project the old forward direction into the new tangent plane
+        // (orthogonal to upAxis_) to define the new baseForward_.
+        glm::vec3 t = oldForward - upAxis_ * glm::dot(oldForward, upAxis_);
+
+        if (glm::dot(t, t) < 1e-6f) {
+            // If oldForward is almost parallel to upAxis_,
+            // fall back to an arbitrary tangent basis (old behavior).
+            glm::vec3 arbitrary = (std::fabs(u.z) < 0.99f)
+                                ? glm::vec3(0.f, 0.f, 1.f)
+                                : glm::vec3(1.f, 0.f, 0.f);
+
+            baseRight_ = glm::normalize(glm::cross(upAxis_, arbitrary));
+            if (glm::dot(baseRight_, baseRight_) < 1e-6f) {
+                baseRight_ = glm::vec3(1.f, 0.f, 0.f);
+            }
+            baseForward_ = glm::normalize(glm::cross(baseRight_, upAxis_));
+        } else {
+            // Use the projected forward direction as the new baseForward_,
+            // so the camera keeps looking roughly where it was.
+            baseForward_ = glm::normalize(t);
+            baseRight_   = glm::normalize(glm::cross(upAxis_, baseForward_));
+        }
+    }
+
+
 private:
     float aspect() const {
         return (height_ > 0) ? float(width_) / float(height_) : 16.f / 9.f;
@@ -173,32 +218,38 @@ private:
     }
 
     glm::vec3 forwardFromYawPitch() const {
-        // Start facing +X in world with Z-up convention: base dir (1,0,0)
-        // Apply yaw around world Z, then pitch toward Z.
-        const float cy = std::cos(yaw_),  sy = std::sin(yaw_);
-        const float cp = std::cos(pitch_), sp = std::sin(pitch_);
-        glm::vec3 f(cp * cy, cp * sy, sp);
+        // Yaw rotates in the tangent plane spanned by baseForward_ and baseRight_
+        // around upAxis_. Pitch tilts toward upAxis_.
+        const float cy = std::cos(yaw_);
+        const float sy = std::sin(yaw_);
+        const float cp = std::cos(pitch_);
+        const float sp = std::sin(pitch_);
+
+        glm::vec3 t = cy * baseForward_ + sy * baseRight_; // tangent direction
+        glm::vec3 f = cp * t + sp * upAxis_;               // pitch toward up
+
         return glm::normalize(f);
     }
 
     glm::vec3 rightVector() const {
         const glm::vec3 f = forwardFromYawPitch();
-        glm::vec3 r = glm::normalize(glm::cross(worldUp_, f));
+        glm::vec3 r = glm::normalize(glm::cross(upAxis_, f));
         // If near singular (looking straight up/down), fall back:
         if (glm::dot(r, r) < 1e-6f) {
-            r = glm::vec3(1, 0, 0);
+            r = baseRight_;
         }
         return r;
     }
 
     glm::vec3 worldUpFrom(const glm::vec3& dir) const {
         // Keep "up" orthogonal to view to avoid roll surprises
-        glm::vec3 r = glm::normalize(glm::cross(worldUp_, dir));
+        glm::vec3 r = glm::normalize(glm::cross(upAxis_, dir));
         if (glm::dot(r, r) < 1e-6f) {
-            return worldUp_; // straight up/down
+            return upAxis_; // looking straight along upAxis_
         }
         return glm::normalize(glm::cross(dir, r));
     }
+
 
 private:
     int   width_  = 1920;
@@ -208,7 +259,9 @@ private:
     float fov_y_deg_ = 60.f;
 
     glm::vec3 target_{0.f, 0.f, 0.f};
-    const glm::vec3 worldUp_{0.f, 0.f, 1.f}; // Z-up
+    glm::vec3 upAxis_{0.f, 0.f, 1.f};      // orbit "up" axis (default Z-up)
+    glm::vec3 baseForward_{1.f, 0.f, 0.f}; // reference forward in tangent plane
+    glm::vec3 baseRight_{0.f, 1.f, 0.f};   // reference right in tangent plane
 
     float radius_     = 3000.f;
     float max_radius_ = 1e7f;

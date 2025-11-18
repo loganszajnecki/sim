@@ -160,18 +160,47 @@ void Renderer::drawScene()
     double now = glfwGetTime();
     updateViewMode_(now, missileWorld);
 
-    // Follow camera only when we're not in the middle of a view transition.
-    if (!viewTrans_.active) {
-        camController_.updateFollowToggle(window_);
-        camController_.setFollowTarget(missileWorld);
+    // --------------------------------------------------------------------
+    // Configure controller based on current view mode
+    // (this is independent of whether a transition is running).
+    // --------------------------------------------------------------------
+    if (viewMode_ == ViewMode::Globe) {
+        // Globe: no follow; panning currently enabled for testing.
+        camController_.setPanEnabled(true);      // set to false later if desired
+        camController_.setFollowAllowed(false);
+    } else { // ViewMode::Local
+        camController_.setPanEnabled(true);
+        camController_.setFollowAllowed(true);
     }
 
-    // If you later implement ensureOutsideSphere, use geoMapper_ here.
-    // if (geoMapper_.isReady()) {
-    //     cam_.ensureOutsideSphere(glm::vec3(0.0f),
-    //                              geoMapper_.earthRadius(),
-    //                              100.0f);
-    // }
+    // --------------------------------------------------------------------
+    // Decide what the camera should look at (subject) ONLY when
+    // we're NOT in the middle of a view transition.
+    // --------------------------------------------------------------------
+    if (!viewTrans_.active) {
+        if (viewMode_ == ViewMode::Local) {
+            // Local view: follow toggle is meaningful here.
+            camController_.updateFollowToggle(window_);
+
+            // If follow is enabled, stick the target to the missile.
+            // If follow is disabled, DO NOT overwrite the target; let
+            // orbit + pan control where the camera is looking.
+            if (camController_.followEnabled()) {
+                camController_.setFollowTarget(missileWorld);
+            }
+        } else { // ViewMode::Globe
+            // Globe view: ignore follow; just keep camera outside the globe.
+            const glm::vec3 earthCenter(0.0f, 0.0f, 0.0f);
+
+            if (geoMapper_.isReady()) {
+                cam_.ensureOutsideSphere(
+                    earthCenter,
+                    geoMapper_.earthRadius(),
+                    100.0f   // margin in world units; tweak as desired
+                );
+            }
+        }
+    }
 
     // Now that camera may have changed, get view/proj/vp.
     const glm::mat4 view = cam_.view();
@@ -210,6 +239,7 @@ void Renderer::drawScene()
                           trail_m_globe, trail_t_globe);
     }
 }
+
 
 void Renderer::renderGlobeScene_(const glm::mat4& vp,
                                  const glm::vec3& missileWorld,
@@ -432,26 +462,39 @@ void Renderer::startViewTransition_(ViewMode toMode,
 {
     if (!window_) return;
 
-    viewTrans_.active = true;
-    viewTrans_.from   = viewMode_;
-    viewTrans_.to     = toMode;
-    viewTrans_.t      = 0.0f;
-
-    // How long the transition takes (seconds).
+    viewTrans_.active   = true;
+    viewTrans_.from     = viewMode_;
+    viewTrans_.to       = toMode;
+    viewTrans_.t        = 0.0f;
     viewTrans_.duration = 2.0f; // tweak to taste
 
     // Start from current camera state.
     viewTrans_.posStart    = cam_.position();
     viewTrans_.targetStart = cam_.target();
 
+    // Disable follow during transition; we'll leave it OFF when done
+    // and let the user explicitly re-enable in Local mode with 'F'.
+    camController_.forceFollow(false);
+    camController_.setFollowAllowed(false); // temporarily ignore F key
+
+    // Earth center in globe/world space.
+    glm::vec3 center(0.0f, 0.0f, 0.0f);
+
+    // Launcher / ENU origin in globe/world space.
+    glm::vec3 launcherWorld =
+        geoMapper_.enuToGlobe(glm::vec3(0.0f, 0.0f, 0.0f));
+    if (world_.hasLaunchMarker()) {
+        // If the world scene has a dedicated launch marker, prefer that.
+        launcherWorld = world_.launchMarkerPos();
+    }
+
     if (toMode == ViewMode::Local) {
         // -----------------------------
-        // Local view: above the engagement, looking down.
+        // Local view: above the local ENU origin, looking down.
         // -----------------------------
-        glm::vec3 center(0.0f);
 
-        // Radial direction from Earth center through the missile.
-        glm::vec3 radial = glm::normalize(missileWorld - center);
+        // Radial direction from Earth center through the local origin.
+        glm::vec3 radial = glm::normalize(launcherWorld - center);
         if (!std::isfinite(radial.x) ||
             !std::isfinite(radial.y) ||
             !std::isfinite(radial.z))
@@ -459,17 +502,20 @@ void Renderer::startViewTransition_(ViewMode toMode,
             radial = glm::vec3(0.0f, 0.0f, 1.0f);
         }
 
-        // Radius of the missile point; fall back to mapper's radius if needed.
-        float rMiss = glm::length(missileWorld);
-        if (rMiss <= 0.0f) {
-            rMiss = geoMapper_.earthWorldRadius();
-            if (rMiss <= 0.0f) {
-                rMiss = kEarthWorldRadius;
+        // For local view, orbit about the local ENU Up (radial).
+        cam_.setOrbitUp(radial);
+
+        // Radius of the local origin point; fall back if needed.
+        float rLocal = glm::length(launcherWorld);
+        if (rLocal <= 0.0f) {
+            rLocal = geoMapper_.earthWorldRadius();
+            if (rLocal <= 0.0f) {
+                rLocal = kEarthWorldRadius;
             }
         }
 
-        // How far above the missile we want to be (in world units).
-        const float backDist = 0.001f * rMiss;   // 50% of radius above surface (tune)
+        // How far above the local origin we want to be (world units).
+        const float backDist = 0.05f * rLocal; // tune as needed
 
         // A small lateral offset so the camera isn't exactly nadir.
         const glm::vec3 worldUp(0.0f, 0.0f, 1.0f);
@@ -480,18 +526,19 @@ void Renderer::startViewTransition_(ViewMode toMode,
 
         const float sideOffset = 0.1f * backDist;
 
-        // Eye is above the missile along the radial, slightly off to the side.
-        glm::vec3 eye = radial * (rMiss + backDist) + right * sideOffset;
+        // Eye is above the local origin along the radial, slightly off to the side.
+        glm::vec3 eye = radial * (rLocal + backDist) + right * sideOffset;
 
         viewTrans_.posEnd    = eye;
-        viewTrans_.targetEnd = missileWorld;  // look down toward the engagement
+        viewTrans_.targetEnd = launcherWorld;  // subject = local ENU origin
     } else {
         // -----------------------------
-        // Globe view: far away, looking at Earth center.
+        // Globe view: far away, looking at Earth center,
+        // aligned with the LAUNCHER (not the missile).
         // -----------------------------
-        glm::vec3 center(0.0f);
 
-        glm::vec3 dir = glm::normalize(center - missileWorld);
+        // Direction from Earth center toward the launcher.
+        glm::vec3 dir = glm::normalize(center - launcherWorld);
         if (!std::isfinite(dir.x) ||
             !std::isfinite(dir.y) ||
             !std::isfinite(dir.z))
@@ -499,9 +546,12 @@ void Renderer::startViewTransition_(ViewMode toMode,
             dir = glm::vec3(0.0f, 0.0f, 1.0f);
         }
 
+        // For globe view, orbit about global Z-up.
+        cam_.setOrbitUp(glm::vec3(0.0f, 0.0f, 1.0f));
+
         float R = geoMapper_.earthWorldRadius();
         if (R <= 0.0f) {
-            R = glm::length(missileWorld);
+            R = glm::length(launcherWorld);
             if (R <= 0.0f) {
                 R = kEarthWorldRadius;
             }
@@ -515,6 +565,7 @@ void Renderer::startViewTransition_(ViewMode toMode,
         viewTrans_.targetEnd = center;
     }
 }
+
 
 static glm::vec3 lerp(const glm::vec3& a,
                       const glm::vec3& b,
@@ -535,11 +586,10 @@ void Renderer::updateViewMode_(double now,
     float dt = static_cast<float>(now - lastViewTime_);
     lastViewTime_ = now;
 
-    // Key toggle: 'V' switches Globe <-> Local.
-    const int cur   = glfwGetKey(window_, GLFW_KEY_V);
+    // Key toggle: 'V' switches Globe <-> Local (only if not already transitioning).
+    const int  cur  = glfwGetKey(window_, GLFW_KEY_V);
     const bool down = (cur == GLFW_PRESS);
     if (down && !vPrevDown_ && !viewTrans_.active) {
-        // Start a new transition.
         ViewMode targetMode = (viewMode_ == ViewMode::Globe)
                             ? ViewMode::Local
                             : ViewMode::Globe;
@@ -564,8 +614,10 @@ void Renderer::updateViewMode_(double now,
     glm::vec3 pos    = lerp(viewTrans_.posStart,    viewTrans_.posEnd,    s);
     glm::vec3 target = lerp(viewTrans_.targetStart, viewTrans_.targetEnd, s);
 
-    cam_.setPosition(pos);
+    // Important: set target first, then position, so Camera can
+    // recompute yaw/pitch/radius consistently.
     cam_.setTarget(target);
+    cam_.setPosition(pos);
 
     if (alpha >= 1.0f) {
         // Transition complete.
@@ -573,6 +625,7 @@ void Renderer::updateViewMode_(double now,
         viewTrans_.active = false;
     }
 }
+
 
 void Renderer::setInitialGlobeView_()
 {
@@ -622,7 +675,13 @@ void Renderer::setInitialGlobeView_()
     viewTrans_.active  = false;
     viewTrans_.t       = 0.0f;
     lastViewTime_      = 0.0;
+
+    // 5) Controller: Globe mode => no follow, no pan.
+    camController_.forceFollow(false);
+    camController_.setFollowAllowed(false);
+    camController_.setPanEnabled(true);
 }
+
 
 
 } // namespace vis
