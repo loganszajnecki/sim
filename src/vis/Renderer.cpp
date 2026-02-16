@@ -174,6 +174,52 @@ void Renderer::drawScene()
     }
 
     // --------------------------------------------------------------------
+    // Adaptive panning: in Globe mode, scale pan by altitude above surface.
+    // --------------------------------------------------------------------
+    if (viewMode_ == ViewMode::Globe) {
+        if (geoMapper_.isReady()) {
+            const glm::vec3 earthCenter(0.0f, 0.0f, 0.0f);
+            const glm::vec3 eye = cam_.position();
+
+            float r = glm::length(eye - earthCenter); // distance from center
+            if (std::isfinite(r) && r > 0.0f) {
+                float R = geoMapper_.earthWorldRadius();
+                if (R <= 0.0f) {
+                    // Fallback: approximate Earth radius from current distance.
+                    R = 0.9f * r;
+                }
+
+                float h = r - R;          // altitude above ground
+                if (h < 0.0f) h = 0.0f;
+
+                const float minAlt = 0.001f * R;  // very close to surface
+                const float maxAlt = 10.0f  * R;  // very far away
+
+                if (h < minAlt) h = minAlt;
+                if (h > maxAlt) h = maxAlt;
+
+                float scale = h / r;
+                // Avoid absurdly tiny or huge sensitivity:
+                const float minScale = 0.01f;
+                const float maxScale = 1.0f;
+                if (scale < minScale) scale = minScale;
+                if (scale > maxScale) scale = maxScale;
+
+                cam_.setPanScale(scale);
+            } else {
+                // Fallback: normal behavior
+                cam_.setPanScale(1.0f);
+            }
+        } else {
+            // Mapper not ready; use default pan behavior.
+            cam_.setPanScale(1.0f);
+        }
+    } else {
+        // Local mode: keep pan scaling simple for now.
+        cam_.setPanScale(1.0f);
+    }
+
+    // --------------------------------------------------------------------
     // Decide what the camera should look at (subject) ONLY when
     // we're NOT in the middle of a view transition.
     // --------------------------------------------------------------------
@@ -453,7 +499,7 @@ void Renderer::setupCallbacks_()
     glfwSetScrollCallback(window_, [](GLFWwindow* w, double /*xoff*/, double yoff) {
         auto* self = static_cast<Renderer*>(glfwGetWindowUserPointer(w));
         if (!self) return;
-        self->camController_.onScroll(yoff);
+        self->handleScroll_(yoff);
     });
 }
 
@@ -502,9 +548,6 @@ void Renderer::startViewTransition_(ViewMode toMode,
             radial = glm::vec3(0.0f, 0.0f, 1.0f);
         }
 
-        // For local view, orbit about the local ENU Up (radial).
-        cam_.setOrbitUp(radial);
-
         // Radius of the local origin point; fall back if needed.
         float rLocal = glm::length(launcherWorld);
         if (rLocal <= 0.0f) {
@@ -546,9 +589,6 @@ void Renderer::startViewTransition_(ViewMode toMode,
             dir = glm::vec3(0.0f, 0.0f, 1.0f);
         }
 
-        // For globe view, orbit about global Z-up.
-        cam_.setOrbitUp(glm::vec3(0.0f, 0.0f, 1.0f));
-
         float R = geoMapper_.earthWorldRadius();
         if (R <= 0.0f) {
             R = glm::length(launcherWorld);
@@ -586,7 +626,7 @@ void Renderer::updateViewMode_(double now,
     float dt = static_cast<float>(now - lastViewTime_);
     lastViewTime_ = now;
 
-    // Key toggle: 'V' switches Globe <-> Local (only if not already transitioning).
+    // Key toggle: 'V' switches Globe <-> Local.
     const int  cur  = glfwGetKey(window_, GLFW_KEY_V);
     const bool down = (cur == GLFW_PRESS);
     if (down && !vPrevDown_ && !viewTrans_.active) {
@@ -614,8 +654,7 @@ void Renderer::updateViewMode_(double now,
     glm::vec3 pos    = lerp(viewTrans_.posStart,    viewTrans_.posEnd,    s);
     glm::vec3 target = lerp(viewTrans_.targetStart, viewTrans_.targetEnd, s);
 
-    // Important: set target first, then position, so Camera can
-    // recompute yaw/pitch/radius consistently.
+    // Apply interpolated pose.
     cam_.setTarget(target);
     cam_.setPosition(pos);
 
@@ -623,9 +662,45 @@ void Renderer::updateViewMode_(double now,
         // Transition complete.
         viewMode_         = viewTrans_.to;
         viewTrans_.active = false;
+
+        // We now adjust the orbit up axis *after* the transition,
+        // in a view-preserving way, to avoid mid-transition flips.
+        glm::vec3 eye = cam_.position();
+        glm::vec3 tgt = cam_.target();
+
+        if (viewMode_ == ViewMode::Local) {
+            // Local mode: orbit about the local ENU Up (radial from Earth center
+            // through the launcher).
+            glm::vec3 center(0.0f, 0.0f, 0.0f);
+
+            glm::vec3 launcherWorld =
+                geoMapper_.enuToGlobe(glm::vec3(0.0f, 0.0f, 0.0f));
+            if (world_.hasLaunchMarker()) {
+                launcherWorld = world_.launchMarkerPos();
+            }
+
+            glm::vec3 radial = glm::normalize(launcherWorld - center);
+            if (!std::isfinite(radial.x) ||
+                !std::isfinite(radial.y) ||
+                !std::isfinite(radial.z))
+            {
+                radial = glm::vec3(0.0f, 0.0f, 1.0f);
+            }
+
+            cam_.setOrbitUp(radial);
+        } else { // ViewMode::Globe
+            // Globe mode: orbit about global Z-up.
+            cam_.setOrbitUp(glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+
+        // Recompute yaw/pitch for the new basis but keep the same eye/target.
+        cam_.setTarget(tgt);
+        cam_.setPosition(eye);
+
+        // Re-enable follow key handling depending on mode.
+        camController_.setFollowAllowed(viewMode_ == ViewMode::Local);
     }
 }
-
 
 void Renderer::setInitialGlobeView_()
 {
@@ -681,6 +756,59 @@ void Renderer::setInitialGlobeView_()
     camController_.setFollowAllowed(false);
     camController_.setPanEnabled(true);
 }
+
+void Renderer::handleScroll_(double yoff)
+{
+    // Positive yoff should zoom in (move closer).
+    if (viewMode_ == ViewMode::Globe) {
+        // In globe view, we zoom based on altitude above the Earth surface,
+        // not distance to the center.
+
+        const glm::vec3 earthCenter(0.0f, 0.0f, 0.0f);
+        const glm::vec3 eye = cam_.position();
+        float r = glm::length(eye - earthCenter); // distance from center
+
+        if (!std::isfinite(r) || r <= 0.0f) {
+            // Fallback to default behavior if something is weird.
+            camController_.onScroll(yoff);
+            return;
+        }
+
+        // Visual Earth radius in world units.
+        float R = geoMapper_.earthWorldRadius();
+        if (R <= 0.0f) {
+            // Fallback: try raw radius from the current position.
+            R = 0.9f * r;
+        }
+
+        // Altitude above ground.
+        float h = r - R;
+        if (h < 0.0f) h = 0.0f;
+
+        // Set reasonable min/max altitudes in world units.
+        const float minAlt = 0.001f * R;  // very close to surface
+        const float maxAlt = 10.0f  * R;  // very far away
+
+        if (h < minAlt) h = minAlt;
+        if (h > maxAlt) h = maxAlt;
+
+        // Exponential zoom on altitude.
+        // k controls how aggressive the zoom feels.
+        const float k = 0.25f;
+        float scale = std::exp(-static_cast<float>(yoff) * k);
+
+        float hNew = glm::clamp(h * scale, minAlt, maxAlt);
+        float rNew = R + hNew;
+
+        // In globe view, the camera target is the Earth center, so
+        // the radius is effectively the distance from center.
+        cam_.setRadius(rNew);
+    } else {
+        // In local view, keep the existing dolly behavior (acts on radius to target).
+        camController_.onScroll(yoff);
+    }
+}
+
 
 
 

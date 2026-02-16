@@ -48,17 +48,21 @@ public:
      * @brief Pan in screen space (dx, dy in pixels).
      */
     void pan(float dx_pixels, float dy_pixels) {
-        // Convert pixels to world units roughly proportional to distance & FOV
-        const float world_per_px =
+        // Base world units per pixel proportional to distance & FOV
+        const float base_world_per_px =
             2.f * radius_ * std::tan(0.5f * glm::radians(fov_y_deg_))
             / std::max(1, height_);
 
+        // Apply an extra scale factor so Renderer can adapt pan to altitude.
+        const float world_per_px = pan_scale_ * base_world_per_px;
+
         const glm::vec3 right = rightVector();
-        const glm::vec3 up    = upAxis_; // lock to world up for clean vertical pans
+        const glm::vec3 up    = upAxis_; // orbit "up" axis
 
         target_ += (dx_pixels * world_per_px) * right
-                 + (dy_pixels * world_per_px) * up;
+                + (dy_pixels * world_per_px) * up;
     }
+
 
     /**
      * @brief Exponential dolly: positive scroll_steps zooms in, negative out.
@@ -77,6 +81,9 @@ public:
 
     /// Projection matrix (set via setProj()).
     glm::mat4 proj() const { return proj_; }
+
+    /// Extra scale factor for panning sensitivity (default = 1).
+    void setPanScale(float s) { pan_scale_ = s; }
 
     /// Current camera world-space position (eye).
     glm::vec3 position() const {
@@ -276,6 +283,7 @@ private:
     // Tunables
     float orbit_sensitivity_ = 1.0f; // 1.0 feels good with FOV scaling
     float zoom_speed_        = 0.15f; // exp zoom factor per wheel "step"
+    float pan_scale_ = 1.0f;   // extra multiplier for pan sensitivity
 };
 
 } // namespace vis

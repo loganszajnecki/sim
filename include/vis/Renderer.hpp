@@ -170,6 +170,7 @@ private:
     void startViewTransition_(ViewMode toMode,
                               const glm::vec3& missileWorld);
     void setInitialGlobeView_();
+    void handleScroll_(double yoff);
 
     void renderGlobeScene_(const glm::mat4& vp,
                            const glm::vec3& missileWorld,
