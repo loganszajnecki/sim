@@ -1,0 +1,33 @@
+This is the most common issue when moving from synthetic to real data. The root-finder needs f(Pc_lo) > 0 and f(Pc_hi) < 0 (or vice versa), and if your real data breaks that bracket, fzero gives up. Here’s a systematic checklist:
+1. Check your units first. This is the #1 culprit. The equilibrium equation has Sburn * rho * rdot on one side and Pc * At / Cstar on the other. If Pc is in psi but Sburn is in m², or At is in in² but Cstar is in m/s, the two sides will never cross. Print both sides of the residual at a known good operating point and make sure they’re the same order of magnitude.
+2. Evaluate f at the bracket endpoints manually. Before calling fzero, add a diagnostic:
+
+f_lo = f(Pc_lo);
+f_hi = f(Pc_hi);
+fprintf('j=%d: f(%.1e)=%.4e, f(%.4e)=%.4e\n', j, Pc_lo, f_lo, Pc_hi, f_hi);
+
+
+If both are positive, your upper bracket is too low — the nozzle term never overtakes the grain term. If both are negative, your lower bracket is too high. This tells you which direction to expand.
+3. Check your br_table values. Plot eval_rdot(Pc, br_table) over a range of pressures for each grain and verify it looks reasonable. A common mistake is having a and n calibrated for Pc in psi but passing Pc in Pa (or vice versa). The burn rate should be on the order of mm/s to cm/s for typical solid propellants.
+4. Check that Sburn is physically reasonable. If your data source gives burn area in cm² or in² instead of m², the mass generation term will be orders of magnitude off.
+5. Check At and Cstar. A typical Cstar is 1200–1600 m/s. If yours is wildly different, or if At is in the wrong units, the nozzle side of the equation won’t balance.
+6. Add a fallback diagnostic wrapper. Replace the fzero call temporarily with something that sweeps the pressure range and plots the residual:
+
+Pc_test = logspace(3, 8, 1000);  % 1 kPa to 100 MPa
+f_test = arrayfun(f, Pc_test);
+figure; semilogx(Pc_test, f_test); grid on;
+xlabel('Pc [Pa]'); ylabel('f(Pc)');
+title(sprintf('Residual at grid point j=%d', j));
+yline(0, 'r--');
+
+
+If the curve never crosses zero, your data is inconsistent — the grain can’t produce enough mass to choke the nozzle, or the nozzle is too small to ever balance the grain output. If it does cross zero but outside your bracket, just widen the bracket.
+7. Check for zero or NaN in your input data. Any Sburn = 0, rho = 0, or NaN in the interpolated values will make the grain side of the equation vanish, collapsing the residual.
+
+fprintf('Sburn range: [%.4e, %.4e]\n', min(prim.Sburn), max(prim.Sburn));
+fprintf('Any NaN in Sburn? %d\n', any(isnan(prim.Sburn)));
+fprintf('Any NaN in Pc_iso? %d\n', any(isnan(prim.Pc_iso)));
+
+
+The most likely culprit in my experience: units on a in the burn rate table. If your source data gives a calibrated for Pc in psi, you need to convert. The burn rate law rdot = a * Pc^n is dimensionally sensitive — a has units of m/s / Pa^n, so if Pc is passed in Pa but a was fit to psi, the burn rate will be off by a factor of 6894.76^n.
+Start with step 6 (plot the residual) — it’ll immediately show you whether the problem is bracket width or a fundamental data inconsistency.​​​​​​​​​​​​​​​​
